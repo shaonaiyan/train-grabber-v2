@@ -398,15 +398,19 @@ export class TrainCar {
         this.drawGoldModule(g);
         break;
       case 'sheep':
-      case 'sheep_v4':
         this.drawSheepModule(g, c);
+        break;
+      case 'sheep_v4':
+        // Rendered & animated live on deck by SheepBehavior
         break;
       case 'survivor':
         this.drawSurvivorModule(g, c);
         break;
       case 'fridge':
-      case 'fridge_v4':
         this.drawFridgeModule(g);
+        break;
+      case 'fridge_v4':
+        // Rendered & animated live on deck by FridgeBehavior
         break;
       case 'egg':
         this.drawEggModule(g, c);
@@ -416,7 +420,7 @@ export class TrainCar {
         this.drawExplosiveModule(g);
         break;
       case 'giant_magnet_v4':
-        this.drawMagnetModule(g);
+        // Rendered & pulsed live on deck by GiantMagnetBehavior
         break;
       case 'junk':
         this.drawJunkModule(g);

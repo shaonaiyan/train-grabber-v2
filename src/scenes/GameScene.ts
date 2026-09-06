@@ -26,6 +26,7 @@ import { ContinuousSalvageDirector } from '../v4/ContinuousSalvageDirector';
 import { V4InteractionSystem } from '../v4/V4InteractionSystem';
 import { V4Telemetry } from '../v4/V4Telemetry';
 import { V4Audio } from '../v4/V4Audio';
+import { V4ObjectRegistry } from '../v4/V4ObjectRegistry';
 
 export class GameScene extends Phaser.Scene {
   private seed: number = 0;
@@ -129,6 +130,7 @@ export class GameScene extends Phaser.Scene {
 
     // V4 initialization
     if (this.isV4) {
+      V4ObjectRegistry.getInstance().reset();
       this.v4Audio = V4Audio.getInstance();
       this.v4Telemetry = V4Telemetry.getInstance();
       this.v4Telemetry.reset(String(this.seed));
@@ -352,6 +354,16 @@ export class GameScene extends Phaser.Scene {
         }
       }
 
+      // Update V4 Hero Entities (Safe, Sheep, Fridge, Barrel, Magnet, Drone, Jeep, FlatCar, Gremlin)
+      const v4Entities = V4ObjectRegistry.getInstance().getAll();
+      for (let i = v4Entities.length - 1; i >= 0; i--) {
+        const entity = v4Entities[i];
+        if (entity.update) {
+          entity.update(dt, actualSpeedPx);
+        }
+      }
+      V4ObjectRegistry.getInstance().cleanDestroyed();
+
       // Update Grapple Hook
       this.grapple.update(scaledDelta, this.allWorldItems);
 
@@ -381,8 +393,18 @@ export class GameScene extends Phaser.Scene {
         this.v4Telemetry.hookIdleTime += dt;
       }
 
+      const activeV4Count = V4ObjectRegistry.getInstance()
+        .getAll()
+        .filter(
+          (e) =>
+            !e.isDestroyed() &&
+            !e.isDelivered() &&
+            e.getPosition().x > -50 &&
+            e.getPosition().x < 1920
+        ).length;
       const activeCount =
         this.allWorldItems.filter((i) => !i.isDestroyed && i.container.x > -50 && i.container.x < 1920).length +
+        activeV4Count +
         this.enemyManager.enemies.length;
       this.v4Telemetry.update(dt, this.runTimeSec, activeCount);
       return;

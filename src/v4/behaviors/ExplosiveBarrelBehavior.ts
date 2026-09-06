@@ -118,6 +118,7 @@ export class ExplosiveBarrelBehavior implements HookableEntity {
     }
 
     this.telemetry.onHookDelivered(this.typeId);
+    this.destroy();
   }
 
   // Section 100-102: Right-click Jettison weapon throw towards mouse position

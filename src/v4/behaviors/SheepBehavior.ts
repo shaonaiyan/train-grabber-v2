@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { HookableEntity, EntityTag, HookContext, ImpactContext, V4ObjectRegistry } from '../V4ObjectRegistry';
 import { V4Audio } from '../V4Audio';
 import { V4Telemetry } from '../V4Telemetry';
+import { EventBus } from '../../core/EventBus';
 
 export type SheepState = 'IDLE' | 'WANDER' | 'LOOK' | 'PANIC' | 'BUMP';
 
@@ -162,6 +163,16 @@ export class SheepBehavior implements HookableEntity {
     }
 
     this.telemetry.onHookDelivered(this.typeId);
+
+    EventBus.getInstance().on('ITEM_DISCARDED', (evt: any) => {
+      if (evt && (evt.item === 'sheep' || evt.item === 'sheep_v4' || evt.instanceId === this.instanceId)) {
+        this.destroy();
+      }
+    });
+  }
+
+  public panic(reason: string = 'DEBUG'): void {
+    this.triggerPanic(reason);
   }
 
   public triggerPanic(reason: string = 'EXPLOSION'): void {
@@ -254,6 +265,15 @@ export class SheepBehavior implements HookableEntity {
     }
 
     if (this._isDelivered) {
+      const trainMgr = (this.scene as any).trainManager;
+      if (trainMgr && trainMgr.cars && trainMgr.cars.length > 0) {
+        const car = trainMgr.cars.find((c: any) => c.type === 'cargo' || c.type === 'flat') || trainMgr.cars[trainMgr.cars.length - 1];
+        const carX = car.container ? car.container.x : car.baseCarX;
+        const carY = car.container ? car.container.y : car.baseCarY;
+        this.container.setPosition(carX + this.localX, carY - 14);
+        this.shadow.setPosition(carX + this.localX, carY + 8);
+      }
+
       // Wandering inside train car deck bounds
       this.stateTimer -= dt;
 

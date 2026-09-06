@@ -180,6 +180,7 @@ export class GoldSafeBehavior implements HookableEntity {
     }
 
     this.telemetry.onHookDelivered(this.typeId);
+    this.destroy();
   }
 
   public onImpact(ctx: ImpactContext): void {

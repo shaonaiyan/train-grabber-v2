@@ -288,16 +288,16 @@ export class DebugPanel {
 
     // Row 11: V4 Hero Spawns
     nextRow();
-    createBtn('+ Safe', () => new GoldSafeBehavior(this.scene, 1850, 530), 0xd35400);
-    createBtn('+ Sheep', () => new SheepBehavior(this.scene, 1850, 580), 0x27ae60);
-    createBtn('+ Fridge', () => new FridgeBehavior(this.scene, 1850, 570), 0x2980b9);
-    createBtn('+ Barrel', () => new ExplosiveBarrelBehavior(this.scene, 1850, 580), 0xc0392b);
+    createBtn('+ Safe', () => new GoldSafeBehavior(this.scene, 1150, 530), 0xd35400);
+    createBtn('+ Sheep', () => new SheepBehavior(this.scene, 1150, 580), 0x27ae60);
+    createBtn('+ Fridge', () => new FridgeBehavior(this.scene, 1150, 570), 0x2980b9);
+    createBtn('+ Barrel', () => new ExplosiveBarrelBehavior(this.scene, 1150, 580), 0xc0392b);
 
     nextRow();
-    createBtn('+ Drone', () => new DroneBehavior(this.scene, 1850, 380), 0x8e44ad);
-    createBtn('+ Magnet', () => new GiantMagnetBehavior(this.scene, 1850, 580), 0x16a085);
-    createBtn('+ Jeep', () => new BanditJeepBehavior(this.scene, 1850, 610), 0xe67e22);
-    createBtn('+ FlatCar', () => new FlatCarEvent(this.scene, 1850, 690), 0x34495e);
+    createBtn('+ Drone', () => new DroneBehavior(this.scene, 1250, 380), 0x8e44ad);
+    createBtn('+ Magnet', () => new GiantMagnetBehavior(this.scene, 1150, 580), 0x16a085);
+    createBtn('+ Jeep', () => new BanditJeepBehavior(this.scene, 1250, 610), 0xe67e22);
+    createBtn('+ FlatCar', () => new FlatCarEvent(this.scene, 1200, 690), 0x34495e);
 
     // Row 12: V4 Interactions & Presets
     nextRow();

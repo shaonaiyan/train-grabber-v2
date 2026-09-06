@@ -225,7 +225,10 @@ export class GremlinBehavior implements HookableEntity {
       const cars = trainMgr.cars;
       if (cars && cars.length > 0) {
         const car = cars[this.currentCarIndex % cars.length];
-        this.targetX = car.x + (Math.random() * 60 - 30);
+        const carX = car.container ? car.container.x : car.baseCarX;
+        const carY = car.container ? car.container.y : car.baseCarY;
+        this.targetX = carX + (Math.random() * 60 - 30);
+        this.container.y = carY - 20;
 
         const dx = this.targetX - this.container.x;
         const dir = Math.sign(dx);
@@ -241,6 +244,13 @@ export class GremlinBehavior implements HookableEntity {
         }
       }
     } else if (this.state === 'SABOTAGE') {
+      const cars = trainMgr.cars;
+      if (cars && cars.length > 0) {
+        const car = cars[this.currentCarIndex % cars.length];
+        const carY = car.container ? car.container.y : car.baseCarY;
+        this.container.y = carY - 20;
+      }
+
       if (this.sabotageTimer <= 0) {
         this.sabotageTimer = this.sabotageInterval;
         this.performSabotage(trainMgr);

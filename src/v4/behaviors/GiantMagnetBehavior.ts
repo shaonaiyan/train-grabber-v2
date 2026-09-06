@@ -3,6 +3,7 @@ import { HookableEntity, EntityTag, HookContext, ImpactContext, V4ObjectRegistry
 import { V4Audio } from '../V4Audio';
 import { V4Telemetry } from '../V4Telemetry';
 import { V4_BALANCE } from '../V4Balance';
+import { EventBus } from '../../core/EventBus';
 
 export type MagnetState = 'OFF' | 'COOLDOWN' | 'CHARGING' | 'ACTIVE' | 'OVERCHARGED';
 
@@ -142,6 +143,12 @@ export class GiantMagnetBehavior implements HookableEntity {
     }
 
     this.telemetry.onHookDelivered(this.typeId);
+
+    EventBus.getInstance().on('ITEM_DISCARDED', (evt: any) => {
+      if (evt && (evt.item === 'giant_magnet_v4' || evt.instanceId === this.instanceId)) {
+        this.destroy();
+      }
+    });
   }
 
   public toggleUserSwitch(): void {
@@ -224,6 +231,13 @@ export class GiantMagnetBehavior implements HookableEntity {
 
     if (this._isDelivered && !this.isUserDisabled) {
       const trainMgr = (this.scene as any).trainManager;
+      if (trainMgr && trainMgr.cars && trainMgr.cars.length > 0) {
+        const car = trainMgr.cars.find((c: any) => c.type === 'cargo' || c.type === 'flat') || trainMgr.cars[trainMgr.cars.length - 1];
+        const carX = car.container ? car.container.x : car.baseCarX;
+        const carY = car.container ? car.container.y : car.baseCarY;
+        this.container.setPosition(carX - 35, carY - 24);
+        this.shadow.setPosition(carX - 35, carY + 8);
+      }
 
       // Battery recharge reduction perk (-20% per battery, max -40%)
       let cdMul = 1.0;
@@ -332,7 +346,7 @@ export class GiantMagnetBehavior implements HookableEntity {
     }
   }
 
-  private triggerOvercharge(): void {
+  public triggerOvercharge(): void {
     this.state = 'OVERCHARGED';
     this.timer = V4_BALANCE.MAGNET.OVERCHARGE_OFF_TIME;
     this.fieldAura.setVisible(false);

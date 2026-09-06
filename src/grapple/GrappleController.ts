@@ -185,8 +185,13 @@ export class GrappleController {
     const v4Targets = V4ObjectRegistry.getInstance().getHookableTargets();
     for (const v4 of v4Targets) {
       const pos = v4.getPosition();
+      let hitRadius = 45;
+      if (v4.typeId === 'flat_car_v4') hitRadius = 85;
+      else if (v4.typeId === 'bandit_jeep_v4') hitRadius = 60;
+      else if (v4.typeId === 'drone_v4') hitRadius = 48;
+
       const dist = Phaser.Math.Distance.Between(this.hookX, this.hookY, pos.x, pos.y);
-      if (dist <= 42) {
+      if (dist <= hitRadius) {
         this.onHitV4Entity(v4);
         return;
       }
