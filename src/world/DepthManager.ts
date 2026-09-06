@@ -60,6 +60,10 @@ export class DepthManager {
     return 'near';
   }
 
+  public getBandConfig(band: DepthBand) {
+    return balanceData.depth[band];
+  }
+
   public getRandomYInBand(band: DepthBand, randFloat: () => number): number {
     const b = balanceData.depth[band];
     return b.minY + randFloat() * (b.maxY - b.minY);

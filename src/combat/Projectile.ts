@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { EventBus } from '../core/EventBus';
 
 export class Projectile {
   public scene: Phaser.Scene;
@@ -6,7 +7,7 @@ export class Projectile {
   public damage: number;
   public targetEnemy: any;
   public isDestroyed: boolean = false;
-  private speed: number = 950;
+  private speed: number = 1050;
 
   constructor(
     scene: Phaser.Scene,
@@ -53,7 +54,16 @@ export class Projectile {
 
     if (dist <= step) {
       // Hit target!
+      const isDeadBefore = this.targetEnemy.isDead;
       this.targetEnemy.takeDamage(this.damage);
+      const killed = !isDeadBefore && this.targetEnemy.isDead;
+
+      EventBus.getInstance().emit('TURRET_DAMAGE_DEALT', {
+        damage: this.damage,
+        killed,
+        target: this.targetEnemy.id,
+      });
+
       this.destroy();
       return true;
     }

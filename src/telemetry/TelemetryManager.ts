@@ -2,7 +2,8 @@ import {
   ItemId,
   SlotType,
   RunTelemetryData,
-  WindowChoiceRecord,
+  SiteRecord,
+  EncounterRecord,
   ItemStatsRecord,
   DiscardRecord,
   TimelineSnapshot,
@@ -10,7 +11,7 @@ import {
 } from '../core/Types';
 import { EventBus } from '../core/EventBus';
 import { TrainManager } from '../train/TrainManager';
-import balanceData from '../data/balance.json';
+import { JourneyProgress } from '../journey/JourneyProgress';
 
 export class TelemetryManager {
   private static instance: TelemetryManager;
@@ -18,10 +19,12 @@ export class TelemetryManager {
   private startTime: number;
   private endTime: number = 0;
   private currentRunTimeSec: number = 0;
+  private currentDistanceM: number = 0;
   private finalScore: number = 0;
   private outcome: 'WIN' | 'FAIL_HP' | 'FAIL_FUEL' | 'FORCED' = 'WIN';
 
-  private windows: WindowChoiceRecord[] = [];
+  private sites: SiteRecord[] = [];
+  private encounters: EncounterRecord[] = [];
   private itemStats: Record<ItemId, ItemStatsRecord>;
   private grabSnapshots: RunTelemetryData['grabSnapshots'] = [];
   private discards: DiscardRecord[] = [];
@@ -30,8 +33,20 @@ export class TelemetryManager {
 
   private timelineTimer: number = 0;
   private trainManager: TrainManager | null = null;
-  private currentPhaseName: string = 'Tutorial';
+  private journeyProgress: JourneyProgress | null = null;
   private boundListeners: Array<{ event: string; fn: (...args: any[]) => void }> = [];
+
+  // Summary accumulator metrics
+  public maxLoadRatio: number = 0;
+  public minSpeedKmh: number = 999;
+  public totalSpeedSampleSum: number = 0;
+  public totalSpeedSamples: number = 0;
+  public timeInHeavy: number = 0;
+  public timeInOverload: number = 0;
+  public timeInDanger: number = 0;
+  public fuelPicked: number = 0;
+  public encounterDamageTotal: number = 0;
+  public turretDamageTotal: number = 0;
 
   public static getInstance(): TelemetryManager {
     if (!TelemetryManager.instance) {
@@ -47,33 +62,44 @@ export class TelemetryManager {
     this.bindEventListeners();
   }
 
-  public init(seed: string | number, trainManager: TrainManager): void {
+  public init(seed: string | number, trainManager: TrainManager, journeyProgress?: JourneyProgress): void {
     this.unbindEventListeners();
     this.bindEventListeners();
 
     this.seed = seed.toString();
     this.trainManager = trainManager;
+    this.journeyProgress = journeyProgress || null;
     this.startTime = Date.now();
     this.endTime = 0;
     this.currentRunTimeSec = 0;
+    this.currentDistanceM = 0;
     this.finalScore = 0;
     this.outcome = 'WIN';
 
-    this.windows = [];
+    this.sites = [];
+    this.encounters = [];
     this.itemStats = this.initItemStats();
     this.grabSnapshots = [];
     this.discards = [];
     this.timeline = [];
     this.events = [];
     this.timelineTimer = 0;
+
+    this.maxLoadRatio = 0;
+    this.minSpeedKmh = 999;
+    this.totalSpeedSampleSum = 0;
+    this.totalSpeedSamples = 0;
+    this.timeInHeavy = 0;
+    this.timeInOverload = 0;
+    this.timeInDanger = 0;
+    this.fuelPicked = 0;
+    this.encounterDamageTotal = 0;
+    this.turretDamageTotal = 0;
   }
 
-  public setRunTime(timeSec: number): void {
+  public setRunContext(timeSec: number, distanceM: number): void {
     this.currentRunTimeSec = timeSec;
-  }
-
-  public getRunTime(): number {
-    return this.currentRunTimeSec;
+    this.currentDistanceM = distanceM;
   }
 
   private initItemStats(): Record<ItemId, ItemStatsRecord> {
@@ -115,27 +141,36 @@ export class TelemetryManager {
     });
     this.addListener('GRAPPLE_MISS', (d: any) => this.recordEvent('GRAPPLE_MISS', d));
 
-    this.addListener('ITEM_DELIVERED', (d: { item: ItemId; instanceId?: string; windowId?: string; spawnPhaseId?: number }) => {
+    this.addListener('ITEM_DELIVERED', (d: { item: ItemId; instanceId?: string; siteId?: string }) => {
       if (this.itemStats[d.item]) this.itemStats[d.item].grabbed++;
+      if (d.item === 'fuel') this.fuelPicked += 20;
       this.recordEvent('ITEM_DELIVERED', d);
 
-      // Section 93: Condition Value Snapshot
+      // Section 153: Grab Snapshot
       if (this.trainManager) {
+        const load = this.trainManager.load;
+        const cargo = this.trainManager.cargo;
+        const speedKmh = this.journeyProgress ? this.journeyProgress.actualSpeedKmh : 60;
+
         this.grabSnapshots.push({
           time: parseFloat(this.currentRunTimeSec.toFixed(2)),
+          distance: Math.round(this.currentDistanceM),
           item: d.item,
           instanceId: d.instanceId,
-          windowId: d.windowId,
-          spawnPhaseId: d.spawnPhaseId,
-          fuel: this.trainManager.stats.fuel,
-          hp: this.trainManager.stats.hp,
-          load: this.trainManager.load.getCurrentLoad(),
-          maxLoad: this.trainManager.load.getMaxLoad(),
+          siteId: d.siteId,
+          fuel: Math.ceil(this.trainManager.stats.fuel),
+          hp: Math.ceil(this.trainManager.stats.hp),
+          load: load.getCurrentLoad(),
+          effectiveLoad: load.effectiveLoad,
+          maxLoad: load.getSafeMaxLoad(),
+          loadRatio: parseFloat(load.getLoadRatio().toFixed(2)),
+          cargoUsed: cargo.cargoUsed,
+          cargoCapacity: cargo.cargoCapacity,
+          cargoOverflow: cargo.getCargoOverflow(),
           powerSupply: this.trainManager.power.getSupply(),
           powerDemand: this.trainManager.power.getDemand(),
-          cargoValue: this.trainManager.getCargoValue(),
+          cargoValue: cargo.getTotalCargoValue(),
           slotAvailability: this.trainManager.getAvailableSlotCount(),
-          phase: this.currentPhaseName,
         });
       }
     });
@@ -145,59 +180,50 @@ export class TelemetryManager {
     this.addListener('ITEM_DISCARDED', (d: {
       item: ItemId;
       discardedItem?: ItemId;
-      time?: number;
-      loadBefore?: number;
       loadAfter?: number;
-      cargoBefore?: number;
       cargoAfter?: number;
-      powerBefore?: number;
-      powerAfter?: number;
-      currentWindowId?: string;
+      time?: number;
+      siteId?: string;
       reasonContext?: any;
     }) => {
       const discItem = d.discardedItem || d.item;
       if (this.itemStats[discItem]) this.itemStats[discItem].discarded++;
+
       this.discards.push({
         time: d.time ?? parseFloat(this.currentRunTimeSec.toFixed(2)),
+        distance: Math.round(this.currentDistanceM),
         item: discItem,
         discardedItem: discItem,
-        loadBefore: d.loadBefore,
         loadAfter: d.loadAfter,
-        cargoBefore: d.cargoBefore,
         cargoAfter: d.cargoAfter,
-        powerBefore: d.powerBefore,
-        powerAfter: d.powerAfter,
-        currentWindowId: d.currentWindowId,
-        reasonContext: {
-          ...d.reasonContext,
-          phase: this.currentPhaseName,
-        },
+        siteId: d.siteId,
+        reasonContext: d.reasonContext,
       });
       this.recordEvent('ITEM_DISCARDED', d);
     });
 
-    this.addListener('CAR_ATTACHED', (d: any) => this.recordEvent('CAR_ATTACHED', d));
-    this.addListener('POWER_SHORTAGE_START', (d: any) => this.recordEvent('POWER_SHORTAGE_START', d));
-    this.addListener('POWER_SHORTAGE_END', (d: any) => this.recordEvent('POWER_SHORTAGE_END', d));
-    this.addListener('HEAVY_TRAIN_START', (d: any) => this.recordEvent('HEAVY_TRAIN_START', d));
-    this.addListener('HEAVY_TRAIN_END', (d: any) => this.recordEvent('HEAVY_TRAIN_END', d));
-    this.addListener('ENEMY_SPAWN', (d: any) => this.recordEvent('ENEMY_SPAWN', d));
-    this.addListener('ENEMY_KILLED', (d: any) => this.recordEvent('ENEMY_KILLED', d));
-    this.addListener('TRAIN_DAMAGE', (d: any) => this.recordEvent('TRAIN_DAMAGE', d));
-    this.addListener('FRIDGE_OPEN', (d: any) => this.recordEvent('FRIDGE_OPEN', d));
-    this.addListener('EGG_HATCH', (d: any) => this.recordEvent('EGG_HATCH', d));
-    this.addListener('PHASE_CHANGE', (d: any) => {
-      this.currentPhaseName = d.name;
-      this.recordEvent('PHASE_CHANGE', d);
-    });
-    this.addListener('WINDOW_START', (d: any) => this.recordEvent('WINDOW_START', d));
-    this.addListener('WINDOW_END', (d: { record: WindowChoiceRecord }) => {
-      this.windows.push(d.record);
+    // Sites
+    this.addListener('SITE_ENTER', (d: any) => this.recordEvent('SITE_ENTER', d));
+    this.addListener('SITE_EXIT', (d: { record: SiteRecord }) => {
+      this.sites.push(d.record);
       for (const ign of d.record.itemsIgnored) {
         if (this.itemStats[ign]) this.itemStats[ign].ignored++;
       }
-      this.recordEvent('WINDOW_END', { windowId: d.record.windowId });
+      this.recordEvent('SITE_EXIT', { siteId: d.record.siteId, captureRate: d.record.captureRate });
     });
+
+    // Encounters
+    this.addListener('ENCOUNTER_START', (d: any) => this.recordEvent('ENCOUNTER_START', d));
+    this.addListener('ENCOUNTER_END', (d: { record: EncounterRecord }) => {
+      this.encounters.push(d.record);
+      this.encounterDamageTotal += d.record.damageTaken;
+      this.turretDamageTotal += d.record.turretDamageDealt;
+      this.recordEvent('ENCOUNTER_END', { encounterId: d.record.encounterId });
+    });
+
+    this.addListener('TRAIN_DAMAGE', (d: any) => this.recordEvent('TRAIN_DAMAGE', d));
+    this.addListener('FRIDGE_OPEN', (d: any) => this.recordEvent('FRIDGE_OPEN', d));
+    this.addListener('EGG_HATCH', (d: any) => this.recordEvent('EGG_HATCH', d));
   }
 
   public recordEvent(event: string, data?: any): void {
@@ -213,15 +239,35 @@ export class TelemetryManager {
     const dt = delta * 0.001;
     this.timelineTimer += dt;
 
-    // Section 96: Snapshot every 5 seconds
+    const ratio = this.trainManager.load.getLoadRatio();
+    if (ratio > this.maxLoadRatio) {
+      this.maxLoadRatio = ratio;
+    }
+
+    const tier = this.trainManager.load.getTier();
+    if (tier === 'HEAVY') this.timeInHeavy += dt;
+    else if (tier === 'OVERLOAD') this.timeInOverload += dt;
+    else if (tier === 'DANGER' || tier === 'HARD_LIMIT') this.timeInDanger += dt;
+
+    const speedKmh = this.journeyProgress ? this.journeyProgress.actualSpeedKmh : 60;
+    if (speedKmh < this.minSpeedKmh) {
+      this.minSpeedKmh = speedKmh;
+    }
+    this.totalSpeedSampleSum += speedKmh;
+    this.totalSpeedSamples++;
+
+    // Section 155: Snapshot every 5 seconds
     if (this.timelineTimer >= 5.0) {
       this.timelineTimer = 0;
       this.timeline.push({
         time: parseFloat(this.currentRunTimeSec.toFixed(1)),
+        distance: Math.round(this.currentDistanceM),
+        speed: Math.round(speedKmh),
         hp: Math.ceil(this.trainManager.stats.hp),
         fuel: Math.ceil(this.trainManager.stats.fuel),
         load: this.trainManager.load.getCurrentLoad(),
-        maxLoad: this.trainManager.load.getMaxLoad(),
+        maxLoad: this.trainManager.load.getSafeMaxLoad(),
+        loadRatio: parseFloat(ratio.toFixed(2)),
         powerSupply: this.trainManager.power.getSupply(),
         powerDemand: this.trainManager.power.getDemand(),
         scorePotential: this.calculateCurrentScore(),
@@ -234,27 +280,11 @@ export class TelemetryManager {
 
   public calculateCurrentScore(): number {
     if (!this.trainManager) return 100;
-    let score = balanceData.score.base;
-
-    const modules = this.trainManager.getAllInstalledModules();
-    for (const m of modules) {
-      if (m.itemId === 'gold') {
-        score += m.fromTradeLine ? 168 : 140;
-      } else if (m.itemId === 'sheep') {
-        score += m.fromTradeLine ? 108 : 90;
-      } else if (m.itemId === 'survivor') {
-        score += 50;
-      } else if (m.itemId === 'junk') {
-        score += 5;
-      } else if (m.itemId === 'fridge' && m.customData?.outcome === 'FOOD') {
-        score += 80;
-      } else if (m.itemId === 'egg' && m.customData?.outcome === 'FRIENDLY') {
-        score += 60;
-      }
-    }
-
-    score += Math.round(this.trainManager.stats.hp * balanceData.score.hpMultiplier);
-    score += Math.round(this.trainManager.stats.fuel * balanceData.score.fuelMultiplier);
+    // Score based on Cargo Value + Train integrity
+    let score = 100;
+    score += this.trainManager.getCargoValue();
+    score += Math.round(this.trainManager.stats.hp * 0.5);
+    score += Math.round(this.trainManager.stats.fuel * 0.5);
     return score;
   }
 
@@ -266,10 +296,11 @@ export class TelemetryManager {
 
   public getFullTelemetry(): RunTelemetryData {
     const modules = this.trainManager ? this.trainManager.getAllInstalledModules() : [];
+    const cargoItems = this.trainManager ? this.trainManager.cargo.getCargoItems() : [];
 
-    const goldCount = modules.filter((m) => m.itemId === 'gold').length;
-    const sheepCount = modules.filter((m) => m.itemId === 'sheep').length;
-    const survivorCount = modules.filter((m) => m.itemId === 'survivor').length;
+    const goldCount = cargoItems.filter((c) => c.itemId === 'gold').length;
+    const sheepCount = cargoItems.filter((c) => c.itemId === 'sheep').length;
+    const survivorCount = cargoItems.filter((c) => c.itemId === 'survivor').length;
     const turretCount = modules.filter((m) => m.itemId === 'turret').length;
     const batteryCount = modules.filter((m) => m.itemId === 'battery').length;
 
@@ -278,10 +309,14 @@ export class TelemetryManager {
       startTime: this.startTime,
       endTime: this.endTime || Date.now(),
       durationSeconds: parseFloat(this.currentRunTimeSec.toFixed(1)),
+      distanceTravelledM: Math.round(this.currentDistanceM),
+      targetDistanceM: this.journeyProgress?.targetDistanceM || 4800,
       finalScore: this.finalScore || this.calculateCurrentScore(),
       cargoValue: this.trainManager ? this.trainManager.getCargoValue() : 0,
       outcome: this.outcome,
-      windows: this.windows,
+      sites: this.sites,
+      encounters: this.encounters,
+      windows: [], // Legacy empty
       itemStats: this.itemStats,
       grabSnapshots: this.grabSnapshots,
       discards: this.discards,
@@ -290,7 +325,9 @@ export class TelemetryManager {
       finalTrain: {
         length: this.trainManager ? this.trainManager.getCarCount() : 3,
         load: this.trainManager ? this.trainManager.load.getCurrentLoad() : 0,
-        maxLoad: this.trainManager ? this.trainManager.load.getMaxLoad() : 48,
+        safeMaxLoad: this.trainManager ? this.trainManager.load.getSafeMaxLoad() : 48,
+        maxLoad: this.trainManager ? this.trainManager.load.getSafeMaxLoad() : 48,
+        loadRatio: this.trainManager ? parseFloat(this.trainManager.load.getLoadRatio().toFixed(2)) : 0,
         powerSupply: this.trainManager ? this.trainManager.power.getSupply() : 2,
         powerDemand: this.trainManager ? this.trainManager.power.getDemand() : 0,
         goldCount,
@@ -312,7 +349,8 @@ export class TelemetryManager {
 
     const a = document.createElement('a');
     a.href = url;
-    a.download = `train_grabber_v2_${this.seed}_${Date.now()}.json`;
+    // Section 157: train_grabber_v3_<seed>_<timestamp>.json
+    a.download = `train_grabber_v3_${this.seed}_${Date.now()}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

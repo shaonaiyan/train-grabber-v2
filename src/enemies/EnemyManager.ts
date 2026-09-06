@@ -9,7 +9,7 @@ import { ParticleManager } from '../fx/Particles';
 import { JuiceManager } from '../fx/JuiceManager';
 import { AudioManager } from '../fx/AudioManager';
 import { EventBus } from '../core/EventBus';
-import phasesData from '../data/phases.json';
+import balanceData from '../data/balance.json';
 
 export class EnemyManager {
   private scene: Phaser.Scene;
@@ -23,9 +23,6 @@ export class EnemyManager {
   public enemies: any[] = [];
   public projectiles: Projectile[] = [];
   private turretWeapons: TurretWeapon[] = [];
-
-  private banditSpawnTimer: number = 12;
-  private droneSpawnTimer: number = 30;
 
   constructor(
     scene: Phaser.Scene,
@@ -46,57 +43,53 @@ export class EnemyManager {
       this.handleExplosiveDetonation(data.x, data.y);
     });
 
-    // Section 32: Tutorial single bandit at 34s
-    this.eventBus.on('SPAWN_TUTORIAL_BANDIT', () => {
-      this.spawnBandit();
+    // Section 100: Spawn enemies directed by EncounterDirector
+    this.eventBus.on('SPAWN_ENEMY_DIRECT', (data: { type: 'bandit' | 'drone' }) => {
+      if (data.type === 'bandit') {
+        this.spawnBandit();
+      } else if (data.type === 'drone') {
+        this.spawnDrone();
+      }
     });
   }
 
-  public update(time: number, delta: number, currentPhaseId: number, worldSpeed: number): void {
-    const dt = delta * 0.001;
-    const phaseConfig = phasesData.phases[currentPhaseId];
-    const trainFrontX = 650;
-
-    // Section 79-80: Concurrent enemy cap (Normal max 2, Hazard Zone max 3)
-    const maxCap = currentPhaseId === 4 ? 3 : 2;
-
-    // 1. Spawning timers (only if under cap)
-    if (phaseConfig && this.enemies.length < maxCap) {
-      const [bMin, bMax] = phaseConfig.enemyBanditInterval;
-      if (bMin < 900) {
-        this.banditSpawnTimer -= dt;
-        if (this.banditSpawnTimer <= 0) {
-          this.banditSpawnTimer = this.rng.range(bMin, bMax);
-          this.spawnBandit();
-        }
-      }
-
-      const [dMin, dMax] = phaseConfig.enemyDroneInterval;
-      if (dMin < 900 && this.enemies.length < maxCap) {
-        this.droneSpawnTimer -= dt;
-        if (this.droneSpawnTimer <= 0) {
-          this.droneSpawnTimer = this.rng.range(dMin, dMax);
-          this.spawnDrone();
-        }
-      }
+  public reset(): void {
+    for (const e of this.enemies) {
+      if (e.container) e.container.destroy();
+      if (e.shadow) e.shadow.destroy();
+      if (e.laserPointer) e.laserPointer.destroy();
     }
+    this.enemies = [];
 
-    // 2. Update active enemies
+    for (const p of this.projectiles) {
+      p.destroy();
+    }
+    this.projectiles = [];
+    this.turretWeapons = [];
+  }
+
+  public update(time: number, delta: number, worldSpeed: number): void {
+    const dt = delta * 0.001;
+    const trainFrontX = 650;
+    const baseSpeedPx = balanceData.train.baseWorldSpeed;
+
+    // 1. Update active enemies (with speed closing bonus)
     for (let i = this.enemies.length - 1; i >= 0; i--) {
       const enemy = this.enemies[i];
-      enemy.update(dt, worldSpeed, trainFrontX);
+      enemy.update(dt, worldSpeed, trainFrontX, baseSpeedPx);
+
       if (enemy.isDead && enemy.container.alpha <= 0.05) {
         this.enemies.splice(i, 1);
       }
     }
 
-    // 3. Update Turrets firing from train
+    // 2. Update Turrets firing from train
     this.updateTurrets(dt);
 
-    // 4. Update Friendly creatures
+    // 3. Update Friendly creatures from hatched egg
     this.updateFriendlyCreatures(dt);
 
-    // 5. Update Projectiles
+    // 4. Update Projectiles
     for (let i = this.projectiles.length - 1; i >= 0; i--) {
       const p = this.projectiles[i];
       if (p.update(dt)) {
@@ -117,7 +110,6 @@ export class EnemyManager {
 
   public spawnDrone(): void {
     const startX = 2050;
-    // Section 10: Drone altitude Y = 390~470
     const startY = this.rng.range(390, 470);
     const drone = new AttackDrone(this.scene, startX, startY, (dmg) => {
       this.trainManager.stats.takeDamage(dmg, 'drone');
@@ -144,22 +136,18 @@ export class EnemyManager {
         const ty = car.baseCarY - 42;
 
         weapon.update(dt, tx, ty, this.enemies, efficiency, this.projectiles);
-
-        if (this.enemies.length > 0) {
-          const closest = this.enemies[0];
-          car.aimTurrets(closest.container.x, closest.container.y);
-        }
       }
     }
   }
 
   private updateFriendlyCreatures(dt: number): void {
-    const modules = this.trainManager.getAllInstalledModules();
-    for (const mod of modules) {
-      if (mod.customData && mod.customData.isCreature && this.enemies.length > 0) {
-        mod.customData.attackTimer = (mod.customData.attackTimer || 0) + dt;
-        if (mod.customData.attackTimer >= 0.9) {
-          mod.customData.attackTimer = 0;
+    // Check CargoSystem for friendly creature egg
+    const cargoItems = this.trainManager.cargo.getCargoItems();
+    for (const cargo of cargoItems) {
+      if (cargo.itemId === 'egg' && cargo.customData?.outcome === 'FRIENDLY' && this.enemies.length > 0) {
+        cargo.customData.attackTimer = (cargo.customData.attackTimer || 0) + dt;
+        if (cargo.customData.attackTimer >= 0.9) {
+          cargo.customData.attackTimer = 0;
           const target = this.enemies[0];
           if (target && !target.isDead) {
             target.takeDamage(4);
@@ -178,31 +166,23 @@ export class EnemyManager {
 
       const radius = 180;
       for (const enemy of this.enemies) {
-        if (enemy.isDead) continue;
-        const dist = Phaser.Math.Distance.Between(x, y, enemy.container.x, enemy.container.y);
-        if (dist <= radius) {
-          enemy.takeDamage(90);
+        if (!enemy.isDead) {
+          const dist = Phaser.Math.Distance.Between(x, y, enemy.container.x, enemy.container.y);
+          if (dist <= radius) {
+            enemy.takeDamage(90);
+          }
         }
       }
 
-      const cranePos = this.trainManager.getCranePosition();
-      const trainDist = Phaser.Math.Distance.Between(x, y, cranePos.x, cranePos.y);
-      if (trainDist <= radius) {
-        this.trainManager.stats.takeDamage(10, 'explosive_self_dmg');
-        this.juice.flashDamage();
-        this.juice.showFloatingText(cranePos.x, cranePos.y - 40, '-10 HP (BLAST)', '#e74c3c', '22px');
+      // Check distance to train rear
+      const lastCar = this.trainManager.cars[this.trainManager.cars.length - 1];
+      if (lastCar) {
+        const distToTrain = Phaser.Math.Distance.Between(x, y, lastCar.baseCarX, lastCar.baseCarY);
+        if (distToTrain < 130) {
+          this.trainManager.stats.takeDamage(10, 'friendly_explosive');
+          this.juice.flashDamage();
+        }
       }
     });
-  }
-
-  public clearAll(): void {
-    for (const e of this.enemies) {
-      if (!e.isDead) e.container.destroy();
-    }
-    this.enemies = [];
-    for (const p of this.projectiles) {
-      p.destroy();
-    }
-    this.projectiles = [];
   }
 }

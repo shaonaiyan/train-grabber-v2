@@ -6,21 +6,30 @@ export type BanditState = 'APPROACH' | 'TELEGRAPH' | 'ATTACK' | 'RETREAT' | 'EXI
 export class BanditJeep {
   public scene: Phaser.Scene;
   public container: Phaser.GameObjects.Container;
-  public hp: number = 75;
-  public maxHp: number = 75;
+  public id: string = 'bandit';
+  public hp: number = 70; // Section 104: HP = 70
+  public maxHp: number = 70;
   public isDead: boolean = false;
   public priority: number = 1;
 
   public state: BanditState = 'APPROACH';
-  private attackInterval: number = 1.55; // Section 75
+  private attackInterval: number = 1.6; // Section 104: 1.6s
   private attackTimer: number = 0;
-  private telegraphTimer: number = 0;
+  private telegraphTimer: number = 0.9; // Section 104: 0.9s
   private shotsFired: number = 0;
-  private maxShots: number = 4; // Section 76
+  private maxShots: number = 3; // Section 104: Max 3 shots (18 dmg max)
   private damage: number = 6;
   private healthBar: Phaser.GameObjects.Graphics;
   private telegraphIndicator: Phaser.GameObjects.Text;
   private onAttackTrain: (damage: number) => void;
+
+  public get isTelegraphing(): boolean {
+    return this.state === 'TELEGRAPH';
+  }
+
+  public get isRetreating(): boolean {
+    return this.state === 'RETREAT' || this.state === 'EXIT';
+  }
 
   constructor(scene: Phaser.Scene, startX: number, startY: number, onAttack: (damage: number) => void) {
     this.scene = scene;
@@ -34,7 +43,6 @@ export class BanditJeep {
     this.healthBar = scene.add.graphics();
     this.container.add(this.healthBar);
 
-    // Section 74: Telegraph alert indicator
     this.telegraphIndicator = scene.add.text(0, -42, '⚠️', {
       fontFamily: 'Arial',
       fontSize: '18px',
@@ -44,7 +52,6 @@ export class BanditJeep {
     this.container.add(this.telegraphIndicator);
 
     this.updateHealthBar();
-
     EventBus.getInstance().emit('ENEMY_SPAWN', { type: 'bandit', hp: this.hp });
   }
 
@@ -117,20 +124,20 @@ export class BanditJeep {
     }
   }
 
-  public update(dt: number, worldSpeed: number, trainFrontX: number): void {
+  public update(dt: number, worldSpeed: number, trainFrontX: number, baseSpeedPx: number = 160): void {
     if (this.isDead) return;
 
+    // Section 102: closing bonus when train is slow
+    const closingBonus = Math.max(0, (baseSpeedPx - worldSpeed) * 0.8);
     const inAttackRange =
       this.container.x - trainFrontX <= 520 && this.container.x > trainFrontX - 80;
 
     switch (this.state) {
       case 'APPROACH':
-        // Drive towards train
-        this.container.x -= (worldSpeed + 45) * dt;
+        this.container.x -= (worldSpeed + 45 + closingBonus) * dt;
         if (inAttackRange) {
-          // Enter telegraph
           this.state = 'TELEGRAPH';
-          this.telegraphTimer = 0.55;
+          this.telegraphTimer = 0.9; // 0.9s telegraph
           this.telegraphIndicator.setVisible(true);
         }
         break;
@@ -147,7 +154,6 @@ export class BanditJeep {
         break;
 
       case 'ATTACK':
-        // Cruise beside train
         if (this.container.x > trainFrontX + 220) {
           this.container.x -= (worldSpeed + 15) * dt;
         } else if (this.container.x < trainFrontX + 80) {
@@ -162,11 +168,11 @@ export class BanditJeep {
         break;
 
       case 'RETREAT':
-        // Section 77: Retreats backwards away from train
-        this.container.x -= (worldSpeed + 80) * dt;
+        this.container.x -= (worldSpeed + 85) * dt;
         if (this.container.x < -180) {
           this.state = 'EXIT';
           this.isDead = true;
+          EventBus.getInstance().emit('ENEMY_ESCAPED', { type: 'bandit' });
           this.container.destroy();
         }
         break;

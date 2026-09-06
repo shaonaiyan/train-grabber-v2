@@ -31,7 +31,7 @@ export class GrappleController {
   // Active target
   private latchedItem: WorldItem | null = null;
   private rejectionTimer: number = 0;
-  private rejectionReason: 'OVERLOAD' | 'NO_SLOT' | null = null;
+  private rejectionReason: string | null = null;
 
   // V2.1 Damped Spring & Heavy Tightening Physics
   private itemVisualX: number = 0;
@@ -338,19 +338,17 @@ export class GrappleController {
       return;
     }
 
-    // 2. Handle Persistent / Car items
+    // 2. Handle Cargo / Module / Car items
     const fitsLoad = this.trainManager.canFitLoad(itemData);
     const hasSlot = this.trainManager.hasSlotFor(itemData);
 
     if (fitsLoad && hasSlot) {
       // Successful installation!
-      const installed = this.trainManager.installItem(itemData, itemData.fromTradeLine);
+      const installed = this.trainManager.installItem(itemData);
       if (installed) {
-        // Section 68: Show CARGO +XXX feedback
-        const cargoBonus = itemData.finishScore || 0;
+        const cargoBonus = itemData.cargoValue || 0;
         if (cargoBonus > 0) {
-          const effectiveCargo = itemData.fromTradeLine ? Math.round(cargoBonus * 1.2) : cargoBonus;
-          this.juice.showFloatingText(cranePos.x, cranePos.y - 45, `CARGO +${effectiveCargo}`, '#f1c40f', '24px');
+          this.juice.showFloatingText(cranePos.x, cranePos.y - 45, `CARGO +$${cargoBonus}`, '#f1c40f', '24px');
         }
 
         this.latchedItem.isDelivered = true;
@@ -360,6 +358,7 @@ export class GrappleController {
         this.eventBus.emit('ITEM_DELIVERED', {
           item: itemData.id,
           instanceId: itemData.instanceId,
+          siteId: itemData.siteId,
           windowId: itemData.windowId,
           spawnPhaseId: itemData.spawnPhaseId,
         });
@@ -368,10 +367,16 @@ export class GrappleController {
       }
     }
 
-    // 3. Failed fit: Enter 1.0 second holding window (Sections 108, 109, 110)
+    // 3. Failed fit: Enter 1.0 second holding window (Sections 33, 91, 186-187)
     this.fsm.setState('REJECTED');
     this.rejectionTimer = balanceData.hook.decisionWindowDuration; // 1.0 second
-    this.rejectionReason = !fitsLoad ? 'OVERLOAD' : 'NO_SLOT';
+    if (itemData.type === 'Car' && !hasSlot) {
+      this.rejectionReason = 'NO COUPLER CAPACITY';
+    } else if (!hasSlot) {
+      this.rejectionReason = itemData.type === 'Cargo' ? 'CARGO LIMIT (+2 MAX)' : 'NO MODULE SLOT';
+    } else {
+      this.rejectionReason = 'CRITICAL OVERLOAD (>130%)';
+    }
 
     this.showHoldingUI(this.rejectionReason);
     this.audio.playWarning();
@@ -391,8 +396,7 @@ export class GrappleController {
     this.rejectionTimer -= dt;
     if (this.holdingText) {
       const remainingSec = Math.max(0, this.rejectionTimer).toFixed(1);
-      const label = this.rejectionReason === 'OVERLOAD' ? 'OVERLOAD' : 'NO SLOT';
-      this.holdingText.setText(`[${label}! DROP ITEM: ${remainingSec}s]`);
+      this.holdingText.setText(`[${this.rejectionReason}! DISCARD TO FIT: ${remainingSec}s]`);
     }
 
     if (this.rejectionTimer <= 0) {
@@ -415,7 +419,7 @@ export class GrappleController {
     const hasSlot = this.trainManager.hasSlotFor(itemData);
 
     if (fitsLoad && hasSlot) {
-      const installed = this.trainManager.installItem(itemData, itemData.fromTradeLine);
+      const installed = this.trainManager.installItem(itemData);
       if (installed) {
         this.juice.showFloatingText(this.hookX, this.hookY - 40, 'SPACE FREED: INSTALLED!', '#2ecc71', '24px');
         this.latchedItem.isDelivered = true;
@@ -426,6 +430,7 @@ export class GrappleController {
         this.eventBus.emit('ITEM_DELIVERED', {
           item: itemData.id,
           instanceId: itemData.instanceId,
+          siteId: itemData.siteId,
           windowId: itemData.windowId,
           spawnPhaseId: itemData.spawnPhaseId,
         });
@@ -470,9 +475,9 @@ export class GrappleController {
     }
   }
 
-  private showHoldingUI(reason: 'OVERLOAD' | 'NO_SLOT'): void {
+  private showHoldingUI(reason: string): void {
     if (!this.holdingText) {
-      this.holdingText = this.scene.add.text(this.hookX, this.hookY - 60, '', {
+      this.holdingText = this.scene.add.text(this.hookX, this.hookY - 60, reason, {
         fontFamily: 'Arial, sans-serif',
         fontSize: '22px',
         fontStyle: 'bold',
@@ -483,6 +488,8 @@ export class GrappleController {
       });
       this.holdingText.setOrigin(0.5);
       this.holdingText.setDepth(160);
+    } else {
+      this.holdingText.setText(reason);
     }
     this.holdingText.setVisible(true);
   }

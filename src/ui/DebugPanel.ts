@@ -1,7 +1,9 @@
 import Phaser from 'phaser';
 import { TrainManager } from '../train/TrainManager';
 import { Grapple } from '../grapple/Grapple';
-import { OpportunityDirector } from '../opportunity/OpportunityDirector';
+import { SalvageSiteDirector } from '../sites/SalvageSiteDirector';
+import { EncounterDirector } from '../encounters/EncounterDirector';
+import { JourneyDirector } from '../journey/JourneyDirector';
 import { EnemyManager } from '../enemies/EnemyManager';
 import { ItemFactory } from '../items/ItemFactory';
 import { WorldItem } from '../items/WorldItem';
@@ -12,7 +14,9 @@ export class DebugPanel {
   private scene: Phaser.Scene;
   private trainManager: TrainManager;
   private grapple: Grapple;
-  private director: OpportunityDirector;
+  private siteDirector: SalvageSiteDirector;
+  private encounterDirector: EncounterDirector;
+  private journeyDirector: JourneyDirector;
   private enemyManager: EnemyManager;
   private itemFactory: ItemFactory;
   private allWorldItems: WorldItem[];
@@ -26,19 +30,16 @@ export class DebugPanel {
   // Debug states
   public isPaused: boolean = false;
   public timeScale: number = 1.0;
-  public ignoreLoadLimit: boolean = false;
   public showOverlays: boolean = false;
-  public showInteractionZone: boolean = false;
-
-  private adaptiveBtnText!: Phaser.GameObjects.Text;
-  private worldLockBtnText!: Phaser.GameObjects.Text;
-  private zoneBtnText!: Phaser.GameObjects.Text;
+  public showSiteBounds: boolean = false;
 
   constructor(
     scene: Phaser.Scene,
     trainManager: TrainManager,
     grapple: Grapple,
-    director: OpportunityDirector,
+    siteDirector: SalvageSiteDirector,
+    encounterDirector: EncounterDirector,
+    journeyDirector: JourneyDirector,
     enemyManager: EnemyManager,
     itemFactory: ItemFactory,
     allWorldItems: WorldItem[],
@@ -47,13 +48,15 @@ export class DebugPanel {
     this.scene = scene;
     this.trainManager = trainManager;
     this.grapple = grapple;
-    this.director = director;
+    this.siteDirector = siteDirector;
+    this.encounterDirector = encounterDirector;
+    this.journeyDirector = journeyDirector;
     this.enemyManager = enemyManager;
     this.itemFactory = itemFactory;
     this.allWorldItems = allWorldItems;
     this.seed = seed;
 
-    this.container = scene.add.container(20, 60);
+    this.container = scene.add.container(20, 50);
     this.container.setDepth(300);
     this.container.setVisible(false);
 
@@ -80,16 +83,16 @@ export class DebugPanel {
   private buildPanelUI(): void {
     const bg = this.scene.add.graphics();
     bg.fillStyle(0x0a0e14, 0.95);
-    bg.fillRoundedRect(0, 0, 840, 680, 8);
-    bg.lineStyle(2, 0x00ffff, 1);
-    bg.strokeRoundedRect(0, 0, 840, 680, 8);
+    bg.fillRoundedRect(0, 0, 860, 720, 8);
+    bg.lineStyle(2, 0x00ffcc, 1);
+    bg.strokeRoundedRect(0, 0, 860, 720, 8);
     this.container.add(bg);
 
-    const title = this.scene.add.text(20, 12, '🛠️ DEBUG SYSTEM PANEL [F1]', {
+    const title = this.scene.add.text(20, 12, '🛠️ V3 DEBUG SYSTEM PANEL [F1]', {
       fontFamily: 'Arial',
       fontSize: '18px',
       fontStyle: 'bold',
-      color: '#00ffff',
+      color: '#00ffcc',
     });
     this.container.add(title);
 
@@ -110,11 +113,11 @@ export class DebugPanel {
       const bCont = this.scene.add.container(btnX, btnY);
       const bG = this.scene.add.graphics();
       bG.fillStyle(color, 1);
-      bG.fillRoundedRect(0, 0, 102, 24, 4);
+      bG.fillRoundedRect(0, 0, 106, 24, 4);
       bG.lineStyle(1, 0xffffff, 0.6);
-      bG.strokeRoundedRect(0, 0, 102, 24, 4);
+      bG.strokeRoundedRect(0, 0, 106, 24, 4);
 
-      const bTxt = this.scene.add.text(51, 12, label, {
+      const bTxt = this.scene.add.text(53, 12, label, {
         fontFamily: 'Arial',
         fontSize: '11px',
         fontStyle: 'bold',
@@ -122,15 +125,15 @@ export class DebugPanel {
       });
       bTxt.setOrigin(0.5);
 
-      const hit = this.scene.add.rectangle(51, 12, 102, 24, 0x000000, 0.001);
+      const hit = this.scene.add.rectangle(53, 12, 106, 24, 0x000000, 0.001);
       hit.setInteractive({ cursor: 'pointer' });
       hit.on('pointerdown', onClick);
 
       bCont.add([bG, bTxt, hit]);
       this.container.add(bCont);
 
-      btnX += 110;
-      if (btnX > 790) {
+      btnX += 114;
+      if (btnX > 800) {
         btnX = 390;
         btnY += 28;
       }
@@ -143,211 +146,202 @@ export class DebugPanel {
     };
 
     // Row 1: Flow Controls
-    createBtn('Pause/Resume', () => {
-      this.isPaused = !this.isPaused;
-    });
+    createBtn('Pause/Resume', () => (this.isPaused = !this.isPaused));
     createBtn('Speed x0.5', () => (this.timeScale = 0.5));
     createBtn('Speed x1.0', () => (this.timeScale = 1.0));
     createBtn('Speed x2.0', () => (this.timeScale = 2.0));
 
-    // Row 2: V2.1 Director & World Mode Toggles
+    // Row 2: V3 Distance Jumps (Section 147)
     nextRow();
-    this.adaptiveBtnText = createBtn(
-      `Adaptive: ${this.director.isAdaptiveEnabled ? 'ON' : 'OFF'}`,
-      () => {
-        this.director.isAdaptiveEnabled = !this.director.isAdaptiveEnabled;
-        this.adaptiveBtnText.setText(`Adaptive: ${this.director.isAdaptiveEnabled ? 'ON' : 'OFF'}`);
-      },
-      0x8e44ad
-    );
-    this.worldLockBtnText = createBtn(
-      `WorldLock: ${this.director.isWorldLocked ? 'ON' : 'OFF'}`,
-      () => {
-        this.director.isWorldLocked = !this.director.isWorldLocked;
-        this.worldLockBtnText.setText(`WorldLock: ${this.director.isWorldLocked ? 'ON' : 'OFF'}`);
-      },
-      0x16a085
-    );
-    this.zoneBtnText = createBtn(
-      `ShowZone: ${this.showInteractionZone ? 'ON' : 'OFF'}`,
-      () => {
-        this.showInteractionZone = !this.showInteractionZone;
-        this.zoneBtnText.setText(`ShowZone: ${this.showInteractionZone ? 'ON' : 'OFF'}`);
-        if (!this.showInteractionZone && !this.showOverlays) {
-          this.overlayGraphics.clear();
-        }
-      },
-      0x2c3e50
-    );
-    createBtn('Overlays', () => {
-      this.showOverlays = !this.showOverlays;
-      if (!this.showOverlays && !this.showInteractionZone) {
-        this.overlayGraphics.clear();
-      }
+    createBtn('DIST +100m', () => {
+      this.journeyDirector.progress.distanceTravelledM += 100;
+    }, 0x16a085);
+    createBtn('DIST +500m', () => {
+      this.journeyDirector.progress.distanceTravelledM += 500;
+    }, 0x16a085);
+    createBtn('DIST to 4750m', () => {
+      this.journeyDirector.progress.distanceTravelledM = 4750;
+    }, 0x8e44ad);
+    createBtn('Bounds [T]', () => {
+      this.showSiteBounds = !this.showSiteBounds;
+      if (!this.showSiteBounds && !this.showOverlays) this.overlayGraphics.clear();
     }, 0x34495e);
 
-    // Row 3: Train Cheats
+    // Row 3: Set Load Ratio (Section 147)
     nextRow();
-    createBtn('HP +20', () => this.trainManager.stats.addHp(20), 0x27ae60);
-    createBtn('Fuel +20', () => this.trainManager.stats.addFuel(20), 0xd35400);
-    createBtn('Power +3', () => {
-      const dummyData = this.itemFactory.getItemData('battery');
-      this.trainManager.installItem(dummyData);
-    }, 0x8e44ad);
-    createBtn('Toggle MaxLoad', () => {
-      this.ignoreLoadLimit = !this.ignoreLoadLimit;
-      if (this.ignoreLoadLimit) {
-        (this.trainManager.load as any).currentMaxLoad = 9999;
-      } else {
-        this.trainManager.recalculateAllStats();
-      }
-    }, 0x16a085);
+    createBtn('Ratio 0.50', () => this.setTestLoadRatio(0.50), 0x27ae60);
+    createBtn('Ratio 0.80', () => this.setTestLoadRatio(0.80), 0xf39c12);
+    createBtn('Ratio 1.00', () => this.setTestLoadRatio(1.00), 0xe67e22);
+    createBtn('Ratio 1.15', () => this.setTestLoadRatio(1.15), 0xd35400);
 
-    // Row 4: Phase Jump
+    // Row 4: Train Cheats & Flat Car
     nextRow();
-    const phases = ['Tutorial', 'Bandit', 'Dryland', 'Trade', 'Hazard', 'Final'];
-    phases.forEach((pName, idx) => {
-      createBtn(pName, () => {
-        const targetTimes = [0, 56, 151, 251, 361, 451];
-        (this.scene as any).runTimeSec = targetTimes[idx];
-        EventBus.getInstance().emit('PHASE_CHANGE', {
-          phaseId: idx,
-          name: pName,
-          banner: `JUMPED TO: ${pName.toUpperCase()}`,
-        });
-      }, 0x7f8c8d);
+    createBtn('Ratio 1.29', () => this.setTestLoadRatio(1.29), 0xc0392b);
+    createBtn('CARGO +10', () => {
+      const dummyGold = this.itemFactory.getItemData('gold');
+      this.trainManager.installItem(dummyGold);
+    }, 0x8e44ad);
+    createBtn('CLEAR CARGO', () => {
+      this.trainManager.cargo.reset();
+      for (const car of this.trainManager.cars) car.clearCargoVisuals();
+      this.trainManager.recalculateAllStats();
+    }, 0x95a5a6);
+    createBtn('+ FLAT CAR', () => {
+      const dummyCar = this.itemFactory.getItemData('flat_car');
+      this.trainManager.attachFlatCar(dummyCar);
+    }, 0x2980b9);
+
+    // Row 5: Fuel & HP Cheats
+    nextRow();
+    createBtn('HP +25', () => this.trainManager.stats.addHp(25), 0x27ae60);
+    createBtn('Fuel +20', () => this.trainManager.stats.addFuel(20), 0xd35400);
+    createBtn('Fuel FULL', () => this.trainManager.stats.addFuel(100), 0xe67e22);
+    createBtn('Overlays', () => {
+      this.showOverlays = !this.showOverlays;
+      if (!this.showOverlays && !this.showSiteBounds) this.overlayGraphics.clear();
+    }, 0x34495e);
+
+    // Row 6: Spawn Sites 1~5 (Section 147)
+    nextRow();
+    const sites = [
+      'intro_scrap',
+      'gas_station',
+      'farm_ruin',
+      'rail_yard',
+      'dry_scrap',
+      'military_wreck',
+      'lab_accident',
+      'broken_freight',
+      'last_temptation',
+    ];
+    sites.slice(0, 4).forEach((siteId) => {
+      createBtn(siteId.substring(0, 10), () => {
+        const runTime = (this.scene as any).runTimeSec || 0;
+        const curDist = this.journeyDirector.progress.distanceTravelledM;
+        const curSpeed = this.journeyDirector.progress.actualSpeedKmh;
+        this.siteDirector.spawnSite(siteId, this.allWorldItems, runTime, curDist, curSpeed, 1950);
+      }, 0x34495e);
     });
 
-    // Row 5: Spawning Entities
+    // Row 7: Spawn Sites 5~9
     nextRow();
-    createBtn('+ Bandit', () => (this.enemyManager as any).spawnBandit(), 0xc0392b);
-    createBtn('+ Drone', () => (this.enemyManager as any).spawnDrone(), 0xd35400);
-    createBtn('Clear Enemies', () => {
-      for (const e of this.enemyManager.enemies) {
-        e.destroy();
-      }
-      this.enemyManager.enemies = [];
-    }, 0x95a5a6);
+    sites.slice(4, 8).forEach((siteId) => {
+      createBtn(siteId.substring(0, 10), () => {
+        const runTime = (this.scene as any).runTimeSec || 0;
+        const curDist = this.journeyDirector.progress.distanceTravelledM;
+        const curSpeed = this.journeyDirector.progress.actualSpeedKmh;
+        this.siteDirector.spawnSite(siteId, this.allWorldItems, runTime, curDist, curSpeed, 1950);
+      }, 0x34495e);
+    });
 
-    // Row 6: Spawn Individual Items
+    // Row 8: Site 9 & Spawn Encounters
+    nextRow();
+    createBtn('last_tempt', () => {
+      const runTime = (this.scene as any).runTimeSec || 0;
+      const curDist = this.journeyDirector.progress.distanceTravelledM;
+      const curSpeed = this.journeyDirector.progress.actualSpeedKmh;
+      this.siteDirector.spawnSite('last_temptation', this.allWorldItems, runTime, curDist, curSpeed, 1950);
+    }, 0x34495e);
+
+    const encounters = ['bandit_intro', 'raider_attack', 'drone_ambush', 'mixed_raid'];
+    encounters.forEach((encId) => {
+      createBtn(encId.substring(0, 10), () => {
+        const curDist = this.journeyDirector.progress.distanceTravelledM;
+        this.encounterDirector.triggerEncounter(encId, curDist);
+      }, 0xc0392b);
+    });
+
+    // Row 9: Spawn Individual Items
     nextRow();
     const itemIds: ItemId[] = [
       'parts', 'fuel', 'gold', 'turret', 'battery', 'flat_car',
-      'sheep', 'survivor', 'fridge', 'egg', 'explosive', 'junk'
+      'sheep', 'survivor', 'fridge', 'egg', 'explosive', 'junk',
     ];
     itemIds.forEach((id) => {
       createBtn(`+ ${id}`, () => {
-        const item = this.itemFactory.spawnWorldItem(1800, 560, id, 'near');
+        const item = this.itemFactory.spawnWorldItem(1850, 560, id, 'near');
         this.allWorldItems.push(item);
       }, 0x2c3e50);
     });
 
-    // Row 7: Spawn Opportunity Groups A ~ L
-    nextRow();
-    const oppLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
-    oppLetters.forEach((letter) => {
-      createBtn(`Group ${letter}`, () => {
-        const grp = (this.director as any).groups[letter];
-        if (grp) {
-          const runTime = (this.scene as any).runTimeSec || 0;
-          this.director.spawnWindowWithItems(
-            `debug_${letter}_${Date.now()}`,
-            letter,
-            grp.name,
-            grp.items,
-            runTime,
-            4.0,
-            this.allWorldItems
-          );
-        }
-      }, 0xd35400);
-    });
-
-    // Force Win / Fail
+    // Row 10: Force Win / Fail
     nextRow();
     createBtn('Force WIN', () => EventBus.getInstance().emit('RUN_WIN'), 0x27ae60);
     createBtn('Force FAIL', () => EventBus.getInstance().emit('RUN_FAIL', { reason: 'FAIL_HP' }), 0xc0392b);
   }
 
-  public update(timeSec: number, phaseId: number, phaseName: string): void {
-    if (!this.isVisible && !this.showInteractionZone && !this.showOverlays) return;
+  private setTestLoadRatio(targetRatio: number): void {
+    const safeMax = this.trainManager.load.getSafeMaxLoad();
+    const targetEffectiveLoad = safeMax * targetRatio;
+    this.trainManager.load.effectiveLoad = targetEffectiveLoad;
+    this.trainManager.load.physicalLoad = targetEffectiveLoad;
+    this.trainManager.recalculateAllStats();
+  }
+
+  public update(timeSec: number): void {
+    if (!this.isVisible && !this.showSiteBounds && !this.showOverlays) return;
 
     if (this.isVisible) {
       const stats = this.trainManager.stats;
       const power = this.trainManager.power;
       const load = this.trainManager.load;
+      const cargo = this.trainManager.cargo;
+      const progress = this.journeyDirector.progress;
       const hookState = this.grapple.getState();
       const latched = this.grapple.getLatchedItem();
-      const activeWin = this.director.getActiveWindow();
-      const winState = activeWin
-        ? (activeWin as any).hasStarted
-          ? 'INTERACTING'
-          : 'APPROACHING'
-        : 'IDLE';
+      const activeSite = this.siteDirector.getActiveSite();
 
       const info = [
-        `=== REAL-TIME METRICS ===`,
+        `=== V3 REAL-TIME METRICS ===`,
         `FPS: ${Math.round(this.scene.game.loop.actualFps)}`,
         `Seed: ${this.seed}`,
         `RunTime: ${timeSec.toFixed(1)}s (Scale: x${this.timeScale})`,
-        `Phase: [${phaseId}] ${phaseName}`,
-        `Cargo Value: $${this.trainManager.getCargoValue()}`,
-        `Score Potential: ${Math.round(this.calculateScorePotential())}`,
+        `Distance: ${progress.distanceTravelledM.toFixed(0)}m / ${progress.targetDistanceM}m (${(progress.progress01 * 100).toFixed(1)}%)`,
+        `Speed: ${progress.actualSpeedKmh.toFixed(1)} km/h (${progress.actualSpeedPx.toFixed(0)} px/s)`,
+        `Speed Mul: ${load.getSpeedMultiplier().toFixed(2)} | Fuel Mul: ${load.getFuelMultiplier().toFixed(2)}`,
         ``,
-        `=== TRAIN STATUS ===`,
-        `HP: ${Math.ceil(stats.hp)} / ${stats.maxHp}`,
-        `Fuel: ${Math.ceil(stats.fuel)} / ${stats.maxFuel}`,
-        `Load: ${load.getCurrentLoad()} / ${load.getMaxLoad()} (${(load.getLoadRatio() * 100).toFixed(0)}%)`,
+        `=== SOFT OVERLOAD & CARGO ===`,
+        `Effective Load: ${load.getCurrentLoad().toFixed(0)} / ${load.getSafeMaxLoad()} (${(load.getLoadRatio() * 100).toFixed(0)}%)`,
+        `Load Tier: [${load.getTier()}]`,
+        `Cargo: ${cargo.cargoUsed} / ${cargo.cargoCapacity} (Overflow: ${cargo.getCargoOverflow()})`,
+        `Cargo Value: $${cargo.getTotalCargoValue()}`,
+        `HP: ${Math.ceil(stats.hp)} / ${stats.maxHp} | Fuel: ${Math.ceil(stats.fuel)} / ${stats.maxFuel}`,
         `Power: ${power.getSupply()} / ${power.getDemand()} (${(power.getEfficiency() * 100).toFixed(0)}%)`,
         `Cars: ${this.trainManager.getCarCount()} (Flat: ${this.trainManager.getFlatCarCount()})`,
-        `Discarded Count: ${this.trainManager.getDiscardedCount()}`,
+        `Discarded: ${this.trainManager.getDiscardedCount()}`,
         ``,
-        `=== GRAPPLE & WINDOWS ===`,
-        `Hook State: ${hookState}`,
-        `Hook Target: ${latched ? latched.data.id : 'None'}`,
-        `Active Window: ${activeWin ? activeWin.windowId : 'None'}`,
-        `Window State: ${winState}`,
+        `=== SITES & COMBAT ===`,
+        `Hook: [${hookState}] Target: ${latched ? latched.data.id : 'None'}`,
+        `Active Site: ${activeSite ? activeSite.def.id : 'None'} (x: ${activeSite ? Math.round(activeSite.siteAnchorX) : 0})`,
+        `Encounter: ${this.encounterDirector.activeEncounter ? this.encounterDirector.activeEncounter.encounterId : 'None'}`,
         `World Items: ${this.allWorldItems.filter((i) => !i.isDestroyed).length}`,
         `Enemies: ${this.enemyManager.enemies.length}`,
-        ``,
-        `=== DIRECTOR CONFIG ===`,
-        `Adaptive Director: ${this.director.isAdaptiveEnabled ? 'ON' : 'OFF'}`,
-        `World Locked: ${this.director.isWorldLocked ? 'ON' : 'OFF'}`,
       ];
 
       this.debugStatsText.setText(info.join('\n'));
     }
 
-    // Visual overlays (hitboxes, bands, interaction zone)
-    if (this.showInteractionZone || this.showOverlays) {
+    if (this.showSiteBounds || this.showOverlays) {
       this.renderOverlays();
     }
-  }
-
-  private calculateScorePotential(): number {
-    return 100 + this.trainManager.getCargoValue() * 1.5;
   }
 
   private renderOverlays(): void {
     const g = this.overlayGraphics;
     g.clear();
 
-    // Render Interaction Zone (Section 20: enter ≈ 1150, exit ≈ 290)
-    if (this.showInteractionZone || this.showOverlays) {
-      // Zone boundary lines
-      g.lineStyle(2, 0x2ecc71, 0.85);
-      g.lineBetween(1150, 420, 1150, 750);
-
-      g.lineStyle(2, 0xe74c3c, 0.85);
-      g.lineBetween(290, 420, 290, 750);
-
-      // Zone fill
-      g.fillStyle(0x3498db, 0.08);
-      g.fillRect(290, 420, 1150 - 290, 330);
+    if (this.showSiteBounds) {
+      const activeSite = this.siteDirector.getActiveSite();
+      if (activeSite) {
+        g.lineStyle(2, 0x00ffcc, 0.85);
+        g.strokeRect(activeSite.siteAnchorX, 450, activeSite.def.lengthPx, 240);
+        g.fillStyle(0x00ffcc, 0.08);
+        g.fillRect(activeSite.siteAnchorX, 450, activeSite.def.lengthPx, 240);
+      }
     }
 
     if (this.showOverlays) {
-      // Depth bands lines (V2.1: FAR 485-535, MID 535-595, NEAR 595-655, Track 710)
+      // Depth bands lines
       g.lineStyle(1, 0x00ffff, 0.35);
       g.lineBetween(0, 485, 1920, 485);
       g.lineBetween(0, 535, 1920, 535);

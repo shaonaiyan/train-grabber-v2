@@ -1,0 +1,39 @@
+{
+  "encounters": [
+    {
+      "id": "bandit_intro",
+      "displayName": "ROVING SCOUT",
+      "distanceM": 850,
+      "enemies": [
+        { "type": "bandit", "delaySec": 0.0 }
+      ]
+    },
+    {
+      "id": "raider_attack",
+      "displayName": "RAIDER PACK",
+      "distanceM": 2950,
+      "enemies": [
+        { "type": "bandit", "delaySec": 0.0 },
+        { "type": "bandit", "delaySec": 1.5 }
+      ]
+    },
+    {
+      "id": "drone_ambush",
+      "displayName": "DRONE AMBUSH",
+      "distanceM": 3150,
+      "enemies": [
+        { "type": "drone", "delaySec": 0.0 },
+        { "type": "drone", "delaySec": 1.2 }
+      ]
+    },
+    {
+      "id": "mixed_raid",
+      "displayName": "COORDINATED STRIKE",
+      "distanceM": 3820,
+      "enemies": [
+        { "type": "bandit", "delaySec": 0.0 },
+        { "type": "drone", "delaySec": 1.0 }
+      ]
+    }
+  ]
+}

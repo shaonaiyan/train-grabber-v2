@@ -71,41 +71,49 @@ export class ResultScene extends Phaser.Scene {
     });
     cargoVal.setOrigin(0.5);
 
-    // Detailed Stats Grid (Section 75)
+    // Detailed Stats Grid (Sections 144, 146)
+    const avgSpeed = telemetry.totalSpeedSamples > 0
+      ? (telemetry.totalSpeedSampleSum / telemetry.totalSpeedSamples).toFixed(1)
+      : '60.0';
+
     const stats = [
-      { label: 'Train Length (Cars)', value: `${fullData.finalTrain.length} CARS` },
+      { label: 'Distance Travelled', value: `${fullData.distanceTravelledM}m / ${fullData.targetDistanceM}m` },
+      { label: 'Travel Time', value: `${fullData.durationSeconds}s` },
+      { label: 'Final Load Ratio', value: `${((fullData.finalTrain.loadRatio ?? 0) * 100).toFixed(0)}% (${fullData.finalTrain.load}/${fullData.finalTrain.maxLoad})` },
+      { label: 'Average Speed', value: `${avgSpeed} km/h` },
       { label: 'Total Cargo Value', value: `$${fullData.cargoValue || 0}` },
-      { label: 'Final Load Capacity', value: `${fullData.finalTrain.load} / ${fullData.finalTrain.maxLoad}` },
+      { label: 'Items Discarded (Sacrificed)', value: `${fullData.finalTrain.discardCount}` },
+      { label: 'Train Length (Cars)', value: `${fullData.finalTrain.length} CARS` },
       { label: 'Power Supply / Demand', value: `${fullData.finalTrain.powerSupply} / ${fullData.finalTrain.powerDemand}` },
+      { label: 'Turrets & Batteries', value: `${fullData.finalTrain.turretCount} Turrets / ${fullData.finalTrain.batteryCount} Batteries` },
+      { label: 'Combat (Dealt / Taken)', value: `${telemetry.turretDamageTotal} dmg / ${telemetry.encounterDamageTotal} taken` },
+      { label: 'Survivors & Sheep', value: `${fullData.finalTrain.survivorCount} Survivors / ${fullData.finalTrain.sheepCount} Sheep` },
       { label: 'Gold Cargo Secured', value: `${fullData.finalTrain.goldCount}` },
-      { label: 'Sheep Carried', value: `${fullData.finalTrain.sheepCount}` },
-      { label: 'Survivors Rescued', value: `${fullData.finalTrain.survivorCount}` },
-      { label: 'Turrets Installed', value: `${fullData.finalTrain.turretCount}` },
-      { label: 'Batteries Mounted', value: `${fullData.finalTrain.batteryCount}` },
-      { label: 'Items Discarded (Sacrifices)', value: `${fullData.finalTrain.discardCount}` },
+      { label: 'Salvage Sites Explored', value: `${fullData.sites ? fullData.sites.length : 0} sites` },
+      { label: 'Time in Overload / Danger', value: `${telemetry.timeInOverload.toFixed(1)}s / ${telemetry.timeInDanger.toFixed(1)}s` },
     ];
 
-    let startY = 320;
+    let startY = 310;
     stats.forEach((item, index) => {
       const col = index % 2;
       const row = Math.floor(index / 2);
-      const x = col === 0 ? 440 : 1000;
-      const y = startY + row * 62;
+      const x = col === 0 ? 410 : 990;
+      const y = startY + row * 66;
 
       const card = this.add.graphics();
-      card.fillStyle(0x161f2c, 0.85);
-      card.fillRoundedRect(x, y, 480, 50, 6);
+      card.fillStyle(0x161f2c, 0.88);
+      card.fillRoundedRect(x, y, 520, 54, 6);
       card.lineStyle(1.5, 0x2c3e50, 1);
-      card.strokeRoundedRect(x, y, 480, 50, 6);
+      card.strokeRoundedRect(x, y, 520, 54, 6);
 
-      const lbl = this.add.text(x + 20, y + 15, item.label, {
+      const lbl = this.add.text(x + 20, y + 16, item.label, {
         fontFamily: 'Arial',
         fontSize: '15px',
         color: '#bdc3c7',
       });
-      const val = this.add.text(x + 460, y + 15, item.value, {
+      const val = this.add.text(x + 500, y + 16, item.value, {
         fontFamily: 'Consolas, monospace',
-        fontSize: '19px',
+        fontSize: '18px',
         fontStyle: 'bold',
         color: '#ffffff',
         align: 'right',

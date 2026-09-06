@@ -1,0 +1,32 @@
+{
+  "targetDistanceM": 4800,
+  "metersPerPixel": 0.111,
+  "baseWorldSpeedPx": 160,
+  "segments": [
+    {
+      "id": "dryland",
+      "name": "DRYLAND",
+      "startDistanceM": 1900,
+      "endDistanceM": 2500,
+      "fuelDrainMultiplier": 1.30
+    }
+  ],
+  "beats": [
+    { "distanceM": 180, "type": "site", "id": "intro_scrap" },
+    { "distanceM": 520, "type": "site", "id": "gas_station" },
+    { "distanceM": 850, "type": "encounter", "id": "bandit_intro" },
+    { "distanceM": 1220, "type": "site", "id": "farm_ruin" },
+    { "distanceM": 1700, "type": "site", "id": "rail_yard" },
+    { "distanceM": 1900, "type": "segment_start", "id": "dryland" },
+    { "distanceM": 2180, "type": "site", "id": "dry_scrap" },
+    { "distanceM": 2500, "type": "segment_end", "id": "dryland" },
+    { "distanceM": 2700, "type": "site", "id": "military_wreck" },
+    { "distanceM": 2950, "type": "encounter", "id": "raider_attack" },
+    { "distanceM": 3150, "type": "encounter", "id": "drone_ambush" },
+    { "distanceM": 3450, "type": "site", "id": "lab_accident" },
+    { "distanceM": 3820, "type": "encounter", "id": "mixed_raid" },
+    { "distanceM": 4050, "type": "site", "id": "broken_freight" },
+    { "distanceM": 4470, "type": "site", "id": "last_temptation" },
+    { "distanceM": 4800, "type": "haven", "id": "haven" }
+  ]
+}

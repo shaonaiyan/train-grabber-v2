@@ -14,6 +14,7 @@ export class WorldItem {
   public isDiscarded: boolean = false;
   public isDestroyed: boolean = false;
   public hookWeight: number;
+  public siteId?: string;
 
   private depthManager: DepthManager;
   private firstSeenLabel: Phaser.GameObjects.Container | null = null;

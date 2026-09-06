@@ -51,6 +51,14 @@ export class WorldScroller {
     return this.currentSpeed;
   }
 
+  public triggerHavenApproachVisuals(): void {
+    this.parallax.spawnFinalStretchSilhouettes();
+  }
+
+  public triggerGreenStationSignal(): void {
+    this.parallax.triggerGreenStationSignal();
+  }
+
   public triggerStationArrival(): void {
     this.isStopping = true;
     this.stopProgress = 0;

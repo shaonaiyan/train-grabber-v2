@@ -3,34 +3,55 @@
     "startXPercent": 0.30,
     "startYPercent": 0.66,
     "baseHp": 100,
-    "baseFuel": 70,
+    "baseFuel": 62,
     "maxFuel": 100,
     "baseMaxLoad": 48,
     "basePowerSupply": 2,
     "baseWorldSpeed": 160,
-    "baseFuelDrain": 0.12,
-    "flatCarFuelDrain": 0.035,
+    "baseFuelDrain": 0.18,
+    "flatCarFuelDrain": 0.025,
     "flatCarInstallLoad": 8,
     "flatCarMaxLoadBonus": 22,
-    "maxFlatCars": 3,
+    "maxFlatCars": 2,
     "outOfFuelSpeedMultiplier": 0.45,
     "outOfFuelFailDuration": 12.0
   },
   "loadTiers": {
-    "tier1Threshold": 0.70,
-    "tier1SpeedMultiplier": 1.0,
-    "tier1FuelMultiplier": 1.0,
-    "tier2Threshold": 0.85,
-    "tier2SpeedMultiplier": 0.95,
-    "tier2FuelMultiplier": 1.12,
-    "tier3SpeedMultiplier": 0.88,
-    "tier3FuelMultiplier": 1.28
+    "normalThreshold": 0.70,
+    "heavyThreshold": 1.00,
+    "overloadThreshold": 1.15,
+    "dangerThreshold": 1.30,
+    "hardLimitThreshold": 1.30,
+    "speedTiers": {
+      "normal": 1.00,
+      "heavyMin": 1.00,
+      "heavyMax": 0.88,
+      "overloadMin": 0.88,
+      "overloadMax": 0.75,
+      "dangerMin": 0.75,
+      "dangerMax": 0.62
+    },
+    "fuelTiers": {
+      "normal": 1.00,
+      "heavyMin": 1.00,
+      "heavyMax": 1.18,
+      "overloadMin": 1.18,
+      "overloadMax": 1.45,
+      "dangerMin": 1.45,
+      "dangerMax": 1.80
+    }
+  },
+  "cargo": {
+    "baseCapacity": 6,
+    "flatCarCapacityBonus": 5,
+    "maxOverstackUnits": 2,
+    "overflowLoadMultiplier": 5
   },
   "power": {
     "minEfficiency": 0.35
   },
   "hook": {
-    "range": 760,
+    "range": 700,
     "flySpeed": 1100,
     "basePullSpeed": 650,
     "weightPullPenalty": 15,
@@ -55,5 +76,15 @@
     "base": 100,
     "hpMultiplier": 0.5,
     "fuelMultiplier": 0.5
+  },
+  "journey": {
+    "targetDistanceM": 4800,
+    "metersPerPixel": 0.111,
+    "baseWorldSpeedPx": 160,
+    "drylandStartM": 1900,
+    "drylandEndM": 2500,
+    "drylandFuelMultiplier": 1.30,
+    "localScrollMinMultiplier": 0.75,
+    "localScrollMaxMultiplier": 1.05
   }
 }

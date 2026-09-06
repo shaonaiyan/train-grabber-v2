@@ -1,11 +1,14 @@
 import { SeededRandom } from '../src/core/SeededRandom';
 import { LoadSystem } from '../src/train/LoadSystem';
+import { CargoSystem } from '../src/train/CargoSystem';
 import { PowerSystem } from '../src/train/PowerSystem';
 import { TrainStatsManager } from '../src/train/TrainStats';
+import { JourneyProgress } from '../src/journey/JourneyProgress';
 import itemsData from '../src/data/items.json';
-import oppsData from '../src/data/opportunities.json';
-import phasesData from '../src/data/phases.json';
 import balanceData from '../src/data/balance.json';
+import journeyData from '../src/data/journey_v3.json';
+import sitesData from '../src/data/salvage_sites_v3.json';
+import encountersData from '../src/data/encounters_v3.json';
 
 function assert(condition: boolean, msg: string) {
   if (!condition) {
@@ -13,141 +16,219 @@ function assert(condition: boolean, msg: string) {
   }
 }
 
-console.log('--- STARTING TRAIN GRABBER V2 CORE VALIDATION ---');
+console.log('================================================================');
+console.log('--- STARTING TRAIN GRABBER V3.0 CORE ARCHITECTURE VALIDATION ---');
+console.log('================================================================\n');
 
-// 1. Test SeededRandom reproducibility
-console.log('1. Testing SeededRandom reproducibility...');
-const rng1 = new SeededRandom(1337);
-const rng2 = new SeededRandom(1337);
-for (let i = 0; i < 50; i++) {
-  const v1 = rng1.nextFloat();
-  const v2 = rng2.nextFloat();
-  assert(v1 === v2, `PRNG mismatch at step ${i}: ${v1} vs ${v2}`);
-}
-console.log('  ✓ SeededRandom is 100% deterministic');
+// 1. DistanceProgressTest (Section 212.1)
+console.log('1. DistanceProgressTest: Verifying distance-based progression...');
+const progress = new JourneyProgress();
+assert(progress.targetDistanceM === 4800, 'Target distance must be 4800m');
+assert(progress.metersPerPixel === 0.111, 'metersPerPixel must be 0.111');
+assert(progress.baseSpeedPx === 160, 'baseWorldSpeedPx must be 160');
+assert(Math.abs(progress.actualSpeedKmh - 63.936) < 0.01, 'Base speed must be ~63.94 km/h');
+assert(progress.distanceTravelledM === 0, 'Initial distance must be 0m');
+assert(progress.isCompleted() === false, 'Should not be completed initially');
 
-// 2. Test LoadSystem
-console.log('2. Testing LoadSystem...');
+// Simulate 10 seconds of travel at base speed (160 px/s)
+progress.update(10, 160);
+// 160 px/s * 0.111 m/px * 10s = 177.6m
+assert(Math.abs(progress.distanceTravelledM - 177.6) < 0.01, 'Distance after 10s must be 177.6m');
+assert(Math.abs(progress.distanceRemainingM - (4800 - 177.6)) < 0.01, 'Distance remaining must match');
+
+// Complete the journey
+progress.update(300, 160);
+assert(progress.distanceTravelledM >= 4800, 'Distance should reach 4800m');
+assert(progress.progress01 === 1.0, 'Progress must be 100%');
+assert(progress.isCompleted() === true, 'Journey must report completed at 4800m');
+console.log('  ✓ DistanceProgressTest passed (Speed conversion, integration & 4800m completion verified)\n');
+
+// 2. SoftLoadNormalTest (Section 212.2)
+console.log('2. SoftLoadNormalTest: Verifying load ratio <= 0.70 NORMAL tier...');
 const loadSys = new LoadSystem();
-assert(loadSys.getCurrentLoad() === 0, 'Initial load should be 0');
-assert(loadSys.getMaxLoad() === 48, 'Initial max load should be 48');
-assert(loadSys.getLoadRatio() === 0, 'Initial load ratio should be 0');
-assert(loadSys.getSpeedMultiplier() === 1.0, 'Initial speed mul should be 1.0');
+assert(loadSys.safeMaxLoad === 48, 'Safe max load must be 48 base');
+loadSys.recalculate(30, 0); // 30 / 48 = 0.625 <= 0.70
+assert(loadSys.getTier() === 'NORMAL', 'Tier at 62.5% load must be NORMAL');
+assert(loadSys.getSpeedMultiplier() === 1.00, 'Speed multiplier in NORMAL must be 1.00');
+assert(loadSys.getFuelMultiplier() === 1.00, 'Fuel multiplier in NORMAL must be 1.00');
+assert(loadSys.canAcceptLoad(10) === true, 'Should accept load when within 1.30');
+console.log('  ✓ SoftLoadNormalTest passed (Tier NORMAL at 1.00x speed and 1.00x fuel)\n');
 
-// Add 35 load -> 35/48 = 72.9% (Tier 2: 70% ~ 85%)
-loadSys.recalculate(35, 0);
-assert(loadSys.getSpeedMultiplier() === 0.95, 'Speed mul at 72.9% should be 0.95');
-assert(loadSys.getFuelMultiplier() === 1.12, 'Fuel mul at 72.9% should be 1.12');
+// 3. SoftLoadOverloadTest (Section 212.3)
+console.log('3. SoftLoadOverloadTest: Verifying load ratio 1.00~1.15 OVERLOAD tier...');
+loadSys.recalculate(48, 0); // 48 / 48 = 1.00 (HEAVY edge / OVERLOAD threshold)
+assert(Math.abs(loadSys.getSpeedMultiplier() - 0.88) < 0.001, 'Speed mul at 1.00 ratio must be 0.88');
+assert(Math.abs(loadSys.getFuelMultiplier() - 1.18) < 0.001, 'Fuel mul at 1.00 ratio must be 1.18');
 
-// Add 42 load -> 42/48 = 87.5% (Tier 3: 85% ~ 100%)
-loadSys.recalculate(42, 0);
-assert(loadSys.getSpeedMultiplier() === 0.88, 'Speed mul at 87.5% should be 0.88');
-assert(loadSys.getFuelMultiplier() === 1.28, 'Fuel mul at 87.5% should be 1.28');
+loadSys.recalculate(53, 0); // 53 / 48 = 1.104 (OVERLOAD)
+assert(loadSys.getTier() === 'OVERLOAD', 'Tier at 110.4% load must be OVERLOAD');
 
-// Add Flat Car -> Max Load should increase by +22 (48 + 22 = 70), Install Load +8
+loadSys.recalculate(55.2, 0); // 55.2 / 48 = 1.15
+assert(Math.abs(loadSys.getSpeedMultiplier() - 0.75) < 0.001, 'Speed mul at 1.15 ratio must be 0.75');
+assert(Math.abs(loadSys.getFuelMultiplier() - 1.45) < 0.001, 'Fuel mul at 1.15 ratio must be 1.45');
+console.log('  ✓ SoftLoadOverloadTest passed (Tier OVERLOAD linear degradation: 0.88->0.75 speed, 1.18->1.45 fuel)\n');
+
+// 4. SoftLoadDangerTest (Section 212.4)
+console.log('4. SoftLoadDangerTest: Verifying load ratio 1.15~1.30 DANGER tier...');
+loadSys.recalculate(60, 0); // 60 / 48 = 1.25
+assert(loadSys.getTier() === 'DANGER', 'Tier at 125% load must be DANGER');
+
+loadSys.recalculate(62.4, 0); // 62.4 / 48 = 1.30 (Hard limit boundary)
+assert(Math.abs(loadSys.getSpeedMultiplier() - 0.62) < 0.001, 'Speed mul at 1.30 ratio must be 0.62');
+assert(Math.abs(loadSys.getFuelMultiplier() - 1.80) < 0.001, 'Fuel mul at 1.30 ratio must be 1.80');
+console.log('  ✓ SoftLoadDangerTest passed (Tier DANGER linear degradation: 0.75->0.62 speed, 1.45->1.80 fuel)\n');
+
+// 5. SoftLoadHardLimitTest (Section 212.5)
+console.log('5. SoftLoadHardLimitTest: Verifying load ratio > 1.30 HARD LIMIT rejection...');
+loadSys.recalculate(63, 0); // 63 / 48 = 1.3125
+assert(loadSys.getTier() === 'HARD_LIMIT', 'Tier at >130% load must be HARD_LIMIT');
+assert(loadSys.canAcceptLoad(1) === false, 'Must reject additional load when exceeding 1.30');
+console.log('  ✓ SoftLoadHardLimitTest passed (Hard limit > 1.30 strictly enforced)\n');
+
+// 6. CargoCapacityTest (Section 212.6)
+console.log('6. CargoCapacityTest: Verifying base capacity 6 + 5 per flat car...');
+const cargoSys = new CargoSystem();
+assert(cargoSys.cargoCapacity === 6, 'Base cargo capacity must be 6');
+assert(cargoSys.canAcceptCargo(1) === true, 'Can accept 1 unit initially');
+
+// Add items of size 1 and 2
+const fakeGold: any = { id: 'gold', cargoSize: 1, load: 12, cargoValue: 140 };
+const fakeSheep: any = { id: 'sheep', cargoSize: 2, load: 8, cargoValue: 70 };
+cargoSys.addCargo(fakeGold);
+cargoSys.addCargo(fakeSheep);
+assert(cargoSys.cargoUsed === 3, 'Cargo used should be 1 + 2 = 3');
+assert(cargoSys.getTotalCargoValue() === 210, 'Total cargo value should be 140 + 70 = 210');
+
+// Flat car capacity increases
+cargoSys.recalculateCapacity(1);
+assert(cargoSys.cargoCapacity === 11, 'Cargo capacity with 1 flat car must be 6 + 5 = 11');
+cargoSys.recalculateCapacity(2);
+assert(cargoSys.cargoCapacity === 16, 'Cargo capacity with 2 flat cars must be 6 + 10 = 16');
+console.log('  ✓ CargoCapacityTest passed (Base capacity 6 + 5/flatcar verified)\n');
+
+// 7. CargoOverflowTest (Section 212.7)
+console.log('7. CargoOverflowTest: Verifying max +2 overstack & +5 load penalty...');
+cargoSys.reset(); // base capacity 6
+// Fill to 6
+for (let i = 0; i < 6; i++) {
+  cargoSys.addCargo(fakeGold);
+}
+assert(cargoSys.cargoUsed === 6, 'Cargo used must be 6');
+assert(cargoSys.getCargoOverflow() === 0, 'No overflow at capacity 6');
+assert(cargoSys.getOverflowLoadPenalty() === 0, 'No penalty at capacity 6');
+
+// Overstack +1 (7 / 6)
+assert(cargoSys.canAcceptCargo(1) === true, 'Can accept +1 overstack');
+cargoSys.addCargo(fakeGold);
+assert(cargoSys.getCargoOverflow() === 1, 'Overflow must be 1');
+assert(cargoSys.getOverflowLoadPenalty() === 5, 'Penalty must be 1 * 5 = 5 load');
+
+// Overstack +2 (8 / 6)
+assert(cargoSys.canAcceptCargo(1) === true, 'Can accept +2 overstack');
+cargoSys.addCargo(fakeGold);
+assert(cargoSys.getCargoOverflow() === 2, 'Overflow must be 2');
+assert(cargoSys.getOverflowLoadPenalty() === 10, 'Penalty must be 2 * 5 = 10 load');
+
+// Attempt to overstack +3 (> maxOverstackUnits of 2) -> REJECTED
+assert(cargoSys.canAcceptCargo(1) === false, 'Cannot accept beyond max +2 overstack (8 max)');
+console.log('  ✓ CargoOverflowTest passed (Max +2 overstack and +5 load/overflow verified)\n');
+
+// 8. FlatCarCapacityTest (Section 212.8)
+console.log('8. FlatCarCapacityTest: Verifying max 2 flat cars & load calculation...');
+assert(balanceData.train.maxFlatCars === 2, 'Max flat cars in balanceData must be 2');
+loadSys.recalculate(20, 0); // 20 / 48
+assert(loadSys.canAcceptFlatCar() === true, 'Can accept flat car under safe load');
+
+// Test flat car bonus (+22 safeMaxLoad, +8 installLoad)
 loadSys.recalculate(0, 1);
-assert(loadSys.getMaxLoad() === 70, 'Max load with 1 flat car should be 70');
-assert(loadSys.getCurrentLoad() === 8, 'Current load with 1 flat car should be 8');
-console.log('  ✓ LoadSystem passed all tier and flat car capacity tests');
+assert(loadSys.safeMaxLoad === 70, 'Safe max load with 1 flat car must be 48 + 22 = 70');
+assert(loadSys.physicalLoad === 8, 'Physical load with 1 flat car must be 8');
 
-// 3. Test PowerSystem
-console.log('3. Testing PowerSystem...');
+loadSys.recalculate(0, 2);
+assert(loadSys.safeMaxLoad === 92, 'Safe max load with 2 flat cars must be 48 + 44 = 92');
+assert(loadSys.physicalLoad === 16, 'Physical load with 2 flat cars must be 16');
+console.log('  ✓ FlatCarCapacityTest passed (Max 2 flat cars, +22 max load / +8 install load verified)\n');
+
+// 9. SiteScheduleDeterminismTest (Section 212.9)
+console.log('9. SiteScheduleDeterminismTest: Verifying 9 salvage sites and loot clusters...');
+assert(sitesData.sites.length === 9, 'Must have exactly 9 salvage sites in V3');
+const expectedSites = [
+  'intro_scrap', 'gas_station', 'farm_ruin', 'rail_yard',
+  'dry_scrap', 'military_wreck', 'lab_accident', 'broken_freight', 'last_temptation'
+];
+let prevTriggerM = 0;
+sitesData.sites.forEach((site: any, idx: number) => {
+  assert(site.id === expectedSites[idx], `Site ${idx} must be ${expectedSites[idx]}, got ${site.id}`);
+  assert(site.triggerDistanceM > prevTriggerM, `Site ${site.id} triggerDistance must be ascending: ${site.triggerDistanceM} > ${prevTriggerM}`);
+  assert(site.props.length > 0, `Site ${site.id} must have props`);
+  assert(site.loot.length > 0, `Site ${site.id} must have loot`);
+  prevTriggerM = site.triggerDistanceM;
+});
+console.log('  ✓ SiteScheduleDeterminismTest passed (All 9 sites have ascending distances, props, and clustered loot)\n');
+
+// 10. MysteryOutcomeDeterminismTest (Section 212.10)
+console.log('10. MysteryOutcomeDeterminismTest: Verifying PRNG determinism for mystery items...');
+const rngSeed = 2026;
+const rngA = new SeededRandom(rngSeed);
+const rngB = new SeededRandom(rngSeed);
+const sequenceA: number[] = [];
+const sequenceB: number[] = [];
+for (let i = 0; i < 50; i++) {
+  sequenceA.push(rngA.nextFloat());
+  sequenceB.push(rngB.nextFloat());
+}
+assert(JSON.stringify(sequenceA) === JSON.stringify(sequenceB), 'RNG sequences must be 100% identical for same seed');
+console.log('  ✓ MysteryOutcomeDeterminismTest passed (PRNG reproducible across runs)\n');
+
+// 11. EncounterTriggerDistanceTest (Section 212.11)
+console.log('11. EncounterTriggerDistanceTest: Verifying 4 encounters at exact distances...');
+assert(encountersData.encounters.length === 4, 'Must have exactly 4 encounters in V3');
+const expectedEncounters = [
+  { id: 'bandit_intro', dist: 850 },
+  { id: 'raider_attack', dist: 2950 },
+  { id: 'drone_ambush', dist: 3150 },
+  { id: 'mixed_raid', dist: 3820 },
+];
+encountersData.encounters.forEach((enc: any, idx: number) => {
+  assert(enc.id === expectedEncounters[idx].id, `Encounter ${idx} id must be ${expectedEncounters[idx].id}`);
+  assert(enc.distanceM === expectedEncounters[idx].dist, `Encounter ${idx} distance must be ${expectedEncounters[idx].dist}m`);
+  assert(enc.enemies.length > 0, `Encounter ${enc.id} must have enemies`);
+});
+console.log('  ✓ EncounterTriggerDistanceTest passed (4 encounters at 850m, 2950m, 3150m, 3820m verified)\n');
+
+// 12. TurretPowerEfficiencyTest (Section 212.12)
+console.log('12. TurretPowerEfficiencyTest: Verifying Turret stats, range 720, and power efficiency...');
+const turretItem = (itemsData as any).items?.turret || (itemsData as any).turret;
+assert(turretItem.range === 720, 'Turret range must be 720 (extended from 500)');
+assert(turretItem.damage === 8, 'Turret damage must be 8');
+assert(turretItem.baseFireRate === 3, 'Turret base fire rate must be 3/s');
+assert(turretItem.powerDemand === 2, 'Turret power demand must be 2');
+
 const powerSys = new PowerSystem();
-assert(powerSys.getSupply() === 2, 'Initial supply should be 2');
-assert(powerSys.getDemand() === 0, 'Initial demand should be 0');
-assert(powerSys.getEfficiency() === 1.0, 'Initial efficiency should be 100%');
-assert(!powerSys.hasShortage(), 'Initial state has no shortage');
+assert(powerSys.getSupply() === 2, 'Base engine supply must be 2');
+assert(powerSys.getEfficiency() === 1.0, 'Base power efficiency must be 1.0');
 
-// Add 2 turrets -> Demand = 4, Supply = 2 -> Ratio = 0.5 -> Efficiency = 0.5
+// 1 turret (demand 2) -> supply 2, demand 2
+powerSys.recalculate(0, 1);
+assert(powerSys.getEfficiency() === 1.0, 'Efficiency with 1 turret must be 1.0');
+assert(powerSys.hasShortage() === false, 'No shortage with 1 turret');
+
+// 2 turrets (demand 4) -> supply 2, demand 4
 powerSys.recalculate(0, 2);
-assert(powerSys.hasShortage(), 'Should have shortage with 2 turrets (demand 4) and supply 2');
-assert(powerSys.getPowerRatio() === 0.5, 'Power ratio should be 0.5');
-assert(powerSys.getEfficiency() === 0.5, 'Efficiency should be 0.5');
+assert(powerSys.getEfficiency() === 0.5, 'Efficiency with 2 turrets must be 0.5');
+assert(powerSys.hasShortage() === true, 'Shortage with 2 turrets');
 
-// Add 4 turrets -> Demand = 8, Supply = 2 -> Ratio = 0.25 -> Efficiency clamped to max(0.35, 0.25) = 0.35
+// 4 turrets (demand 8) -> supply 2, demand 8 -> clamps to 0.35
 powerSys.recalculate(0, 4);
-assert(powerSys.getEfficiency() === 0.35, 'Efficiency should clamp to min 0.35');
+assert(powerSys.getEfficiency() === 0.35, 'Efficiency clamped to min 0.35 with 4 turrets');
 
-// Add 2 Batteries -> Supply = 2 + 2*3 = 8, Demand = 8 -> Shortage resolved!
-powerSys.recalculate(2, 4);
-assert(!powerSys.hasShortage(), 'Shortage should be resolved when supply reaches demand');
-assert(powerSys.getEfficiency() === 1.0, 'Efficiency should be 1.0 when resolved');
-console.log('  ✓ PowerSystem passed all shortage and efficiency tests');
+// Add 1 battery (+3 supply) -> supply 2 + 3 = 5, demand 4 -> shortage resolved
+powerSys.recalculate(1, 2);
+assert(powerSys.getSupply() === 5, 'Supply with 1 battery must be 2 + 3 = 5');
+assert(powerSys.getEfficiency() === 1.0, 'Efficiency resolved to 1.0 with battery');
+assert(powerSys.hasShortage() === false, 'Shortage resolved with battery');
+console.log('  ✓ TurretPowerEfficiencyTest passed (Turret 720 range, power scaling and battery resolution verified)\n');
 
-// 4. Test TrainStatsManager
-console.log('4. Testing TrainStatsManager...');
-const stats = new TrainStatsManager();
-assert(stats.hp === 100, 'Initial HP should be 100');
-assert(stats.fuel === 70, 'Initial Fuel should be 70');
-
-stats.takeDamage(30, 'test');
-assert(stats.hp === 70, 'HP after 30 damage should be 70');
-stats.addHp(15);
-assert(stats.hp === 85, 'HP after 15 heal should be 85');
-
-// Fuel drain calculation
-const drain = stats.calculateFuelDrain(0, 0, 1.0, 1.0);
-assert(Math.abs(drain - 0.12) < 0.001, 'Base fuel drain should be 0.12/s');
-
-// Dryland (x1.35) + 1 Flat Car (+0.035) + 1 Survivor (+0.008)
-const drainDryland = stats.calculateFuelDrain(1, 1, 1.0, 1.35);
-// (0.12 + 0.035 + 0.008) * 1.35 = 0.163 * 1.35 = 0.22005
-assert(Math.abs(drainDryland - 0.22005) < 0.001, 'Complex fuel drain should match formula');
-
-// Out of fuel timer test
-stats.fuel = 0;
-stats.update(6.0, drain);
-assert(stats.isOutOfFuel === true, 'Should be out of fuel');
-assert(stats.outOfFuelTimer >= 6.0, 'Timer should have tracked 6.0s');
-stats.addFuel(10);
-assert(stats.isOutOfFuel === false, 'Should no longer be out of fuel');
-assert(stats.outOfFuelTimer === 0, 'Timer should reset to 0');
-console.log('  ✓ TrainStatsManager passed all stat, drain, and fuel tests');
-
-// 5. Verify V2.1 Balance Parameters & Depth Bands
-console.log('5. Validating V2.1 Balance & Depth Configuration...');
-assert(balanceData.depth.far.minY === 485 && balanceData.depth.far.maxY === 535, 'Far depth band should be 485-535');
-assert(balanceData.depth.mid.minY === 535 && balanceData.depth.mid.maxY === 595, 'Mid depth band should be 535-595');
-assert(balanceData.depth.near.minY === 595 && balanceData.depth.near.maxY === 655, 'Near depth band should be 595-655');
-assert(balanceData.depth.trackY === 710, 'Track Y should be 710');
-
-// Grapple hook weight lag and recoil
-assert(balanceData.hook.recoilDistance === 8, 'Grapple recoil distance should be 8px');
-assert(balanceData.hook.tightenDuration === 110, 'Heavy item tighten duration should be 110ms');
-assert(balanceData.hook.maxLag === 65, 'Max lag should be 65px');
-
-// Flat Car Capacity Logic (45/48 load + 8 install load <= 48 + 22 max load = 53 <= 70)
-const curLoad = 45;
-const curMaxLoad = 48;
-const flatCarInstallLoad = 8;
-const flatCarBonus = 22;
-const canFit = curLoad + flatCarInstallLoad <= curMaxLoad + flatCarBonus;
-assert(canFit === true, 'Flat car should be installable when currentLoad + 8 <= curMaxLoad + 22');
-console.log('  ✓ V2.1 Depth bands, hook lag, and flat car fitting logic verified');
-
-// 6. Verify Data Configuration Integrity
-console.log('6. Validating JSON data configurations...');
-const items = (itemsData as any).items || (itemsData as any);
-const requiredItems = ['parts', 'fuel', 'gold', 'turret', 'battery', 'flat_car', 'sheep', 'survivor', 'fridge', 'egg', 'explosive', 'junk'];
-for (const req of requiredItems) {
-  assert(items[req] !== undefined, `Missing item in items.json: ${req}`);
-}
-assert(items['gold'].finishScore === 140, 'Gold finish score should be 140');
-assert(items['turret'].damage === 8, 'Turret damage should be 8');
-assert(items['turret'].baseFireRate === 3, 'Turret base fire rate should be 3');
-assert(items['turret'].range === 500, 'Turret range should be 500');
-assert(items['flat_car'].maxLoadBonus === 22, 'Flat car max load bonus should be 22');
-
-const oppGroups = (oppsData as any).groups;
-const requiredGroups = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
-for (const g of requiredGroups) {
-  assert(oppGroups[g] !== undefined, `Missing opportunity group: ${g}`);
-  assert(oppGroups[g].items.length >= 2, `Group ${g} must have at least 2 items`);
-}
-
-assert(phasesData.totalDuration === 480, 'Total run duration must be 480 seconds (8 minutes)');
-assert(phasesData.phases.length === 6, 'Must have 6 phase configurations (0 to 5)');
-
-console.log('  ✓ All 12 items, 12 opportunity groups, and 6 phases validated');
-console.log('--- ALL VALIDATIONS PASSED CLEANLY ---');
-
+console.log('================================================================');
+console.log('--- ALL 12 CORE SPECIFICATION TESTS PASSED SUCCESSFULLY! ---');
+console.log('================================================================');

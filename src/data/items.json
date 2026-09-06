@@ -5,49 +5,53 @@
       "name": "Parts Crate",
       "type": "Consumable",
       "hookWeight": 4,
-      "hpBonus": 20,
+      "hpBonus": 22,
       "scoreBonus": 5,
-      "description": "REPAIR\nHP +20"
+      "hint": "PARTS - Consumable / HP +22",
+      "description": "PARTS\nConsumable | HP +22"
     },
     "fuel": {
       "id": "fuel",
       "name": "Fuel Barrel",
       "type": "Consumable",
       "hookWeight": 5,
-      "fuelBonus": 24,
+      "fuelBonus": 20,
       "scoreBonus": 5,
-      "description": "FUEL\nFuel +24"
+      "hint": "FUEL - Consumable / Fuel +20",
+      "description": "FUEL\nConsumable | Fuel +20"
     },
     "gold": {
       "id": "gold",
       "name": "Gold Chest",
-      "type": "Persistent",
-      "slot": "BODY",
+      "type": "Cargo",
+      "cargoSize": 1,
       "load": 12,
-      "finishScore": 140,
-      "tradeLineBonusMultiplier": 1.2,
-      "description": "GOLD\nLoad 12 | Finish +140"
+      "cargoValue": 140,
+      "hint": "GOLD - Heavy Cargo / Valuable ($140)",
+      "description": "GOLD\nCargo 1 | Load 12 | Value $140"
     },
     "turret": {
       "id": "turret",
       "name": "Auto Turret",
-      "type": "Persistent",
+      "type": "Module",
       "slot": "TOP",
       "load": 8,
       "powerDemand": 2,
       "damage": 8,
       "baseFireRate": 3,
-      "range": 500,
-      "description": "TURRET\nLoad 8 | Power -2"
+      "range": 720,
+      "hint": "TURRET - Top Module / Defensive Fire (Range 720)",
+      "description": "TURRET\nTop Module | Load 8 | Power -2"
     },
     "battery": {
       "id": "battery",
       "name": "Power Battery",
-      "type": "Persistent",
+      "type": "Module",
       "slot": "SIDE",
       "load": 6,
       "powerSupply": 3,
-      "description": "BATTERY\nLoad 6 | Power +3"
+      "hint": "BATTERY - Side Module / Power +3",
+      "description": "BATTERY\nSide Module | Load 6 | Power +3"
     },
     "flat_car": {
       "id": "flat_car",
@@ -55,75 +59,86 @@
       "type": "Car",
       "hookWeight": 16,
       "installLoad": 8,
+      "safeMaxLoadBonus": 22,
       "maxLoadBonus": 22,
-      "fuelDrain": 0.035,
-      "maxInstances": 3,
+      "cargoCapacityBonus": 5,
+      "fuelDrain": 0.025,
+      "maxInstances": 2,
       "canDiscard": false,
-      "description": "FLAT CAR\n+Slots | MaxLoad +22\nFuel Drain +0.035/s"
+      "hint": "FLAT CAR - Major Extension / SafeMax +22, Cargo +5",
+      "description": "FLAT CAR\nCar Extension | SafeMax +22\nCargo Cap +5 | Fuel +0.025/s"
     },
     "sheep": {
       "id": "sheep",
       "name": "Sheep",
-      "type": "Persistent",
-      "slot": "BODY",
+      "type": "Cargo",
+      "cargoSize": 1,
       "load": 5,
-      "finishScore": 90,
-      "tradeLineBonusMultiplier": 1.2,
-      "description": "SHEEP\nLoad 5 | Finish +90"
+      "cargoValue": 90,
+      "hint": "SHEEP - Living Cargo / Value $90",
+      "description": "SHEEP\nCargo 1 | Load 5 | Value $90"
     },
     "survivor": {
       "id": "survivor",
       "name": "Survivor",
-      "type": "Persistent",
-      "slot": "BODY",
-      "load": 5,
-      "regenInterval": 4.0,
+      "type": "Cargo",
+      "cargoSize": 1,
+      "load": 4,
+      "regenInterval": 5.0,
       "regenHp": 1,
-      "fuelDrain": 0.008,
-      "finishScore": 50,
-      "description": "SURVIVOR\nRegen HP 1/4s\nFuel Drain +0.008/s"
+      "fuelDrain": 0.0,
+      "cargoValue": 50,
+      "hint": "SURVIVOR - Medic / Regens 1 HP / 5s",
+      "description": "SURVIVOR\nCargo 1 | Load 4 | Regen 1HP/5s"
     },
     "fridge": {
       "id": "fridge",
       "name": "Mystery Fridge",
-      "type": "Persistent",
-      "slot": "BODY",
+      "type": "Cargo",
+      "cargoSize": 2,
       "load": 9,
-      "openTime": 12.0,
-      "description": "FRIDGE\nLoad 9 | Opens in 12s"
+      "openTime": 10.0,
+      "cargoValue": 0,
+      "hint": "FRIDGE - Mystery Cargo (Size 2) / Opens in 10s",
+      "description": "FRIDGE\nCargo 2 | Load 9 | Opens in 10s"
     },
     "egg": {
       "id": "egg",
       "name": "Monster Egg",
-      "type": "Persistent",
-      "slot": "BODY",
+      "type": "Cargo",
+      "cargoSize": 1,
       "load": 7,
-      "hatchTime": 20.0,
+      "hatchTime": 15.0,
       "friendlyDmg": 4,
       "friendlyInterval": 0.9,
       "friendlyScore": 60,
-      "description": "EGG\nLoad 7 | Hatches in 20s"
+      "cargoValue": 0,
+      "hint": "EGG - Alien Cargo / Hatches in 15s",
+      "description": "EGG\nCargo 1 | Load 7 | Hatches in 15s"
     },
     "explosive": {
       "id": "explosive",
       "name": "Explosive Barrel",
-      "type": "Persistent",
-      "slot": "SIDE",
+      "type": "Cargo",
+      "cargoSize": 1,
       "load": 7,
       "explodeDelay": 0.6,
       "explodeRadius": 180,
       "enemyDamage": 90,
       "trainDamage": 10,
-      "description": "EXPLOSIVE\nLoad 7 | Drop to Detonate"
+      "cargoValue": 0,
+      "hint": "EXPLOSIVE - Cargo / Discard to Detonate",
+      "description": "EXPLOSIVE\nCargo 1 | Load 7 | Discard: Explodes"
     },
     "junk": {
       "id": "junk",
       "name": "Junk Bundle",
-      "type": "Persistent",
-      "slot": "SIDE",
-      "load": 6,
-      "finishScore": 5,
-      "description": "JUNK\nLoad 6 | Finish +5"
+      "type": "Cargo",
+      "cargoSize": 1,
+      "load": 5,
+      "cargoValue": 5,
+      "hint": "JUNK - Scrap Cargo / Value $5",
+      "description": "JUNK\nCargo 1 | Load 5 | Value $5"
     }
   }
 }

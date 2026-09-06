@@ -15,7 +15,7 @@ export class TrainStatsManager {
     this.maxHp = balanceData.train.baseHp;
     this.hp = this.maxHp;
     this.maxFuel = balanceData.train.maxFuel;
-    this.fuel = balanceData.train.baseFuel;
+    this.fuel = balanceData.train.baseFuel; // 62
   }
 
   public reset(): void {
@@ -51,15 +51,14 @@ export class TrainStatsManager {
 
   public calculateFuelDrain(
     flatCarCount: number,
-    survivorCount: number,
     loadFuelMultiplier: number,
-    phaseFuelMultiplier: number
+    segmentFuelMultiplier: number = 1.0
   ): number {
+    // Section 21 & 121: baseFuelDrain = 0.18/s, flatCar = 0.025/s, Survivor drain removed
     const baseDrain = balanceData.train.baseFuelDrain;
     const flatCarDrain = flatCarCount * balanceData.train.flatCarFuelDrain;
-    const survivorDrain = survivorCount * 0.008;
 
-    return (baseDrain + flatCarDrain + survivorDrain) * loadFuelMultiplier * phaseFuelMultiplier;
+    return (baseDrain + flatCarDrain) * loadFuelMultiplier * segmentFuelMultiplier;
   }
 
   public update(deltaSeconds: number, drainRate: number): void {

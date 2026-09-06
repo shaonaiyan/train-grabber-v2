@@ -1,0 +1,196 @@
+{
+  "sites": [
+    {
+      "id": "intro_scrap",
+      "displayName": "ROADSIDE SCRAP",
+      "triggerDistanceM": 180,
+      "lengthPx": 550,
+      "visualTheme": "scrap",
+      "isMajor": false,
+      "props": [
+        { "type": "scrap_pile", "offsetX": -100, "band": "far" },
+        { "type": "junk_barrel", "offsetX": 0, "band": "mid" },
+        { "type": "rail_post", "offsetX": 120, "band": "near" }
+      ],
+      "loot": [
+        { "item": "parts", "offsetX": 0, "band": "near" }
+      ]
+    },
+    {
+      "id": "gas_station",
+      "displayName": "ABANDONED GAS STATION",
+      "triggerDistanceM": 520,
+      "lengthPx": 950,
+      "visualTheme": "gas_station",
+      "isMajor": false,
+      "props": [
+        { "type": "gas_canopy", "offsetX": 50, "band": "far" },
+        { "type": "gas_pump", "offsetX": 20, "band": "mid" },
+        { "type": "gas_pump", "offsetX": 100, "band": "mid" },
+        { "type": "abandoned_car", "offsetX": -180, "band": "mid" },
+        { "type": "fallen_sign", "offsetX": -80, "band": "far" },
+        { "type": "tire_stack", "offsetX": 220, "band": "near" },
+        { "type": "trash_pile", "offsetX": 300, "band": "mid" }
+      ],
+      "loot": [
+        { "item": "survivor", "offsetX": -120, "band": "mid" },
+        { "item": "fuel", "offsetX": 30, "band": "near" },
+        { "item": "turret", "offsetX": 60, "band": "far" },
+        { "item": "gold", "offsetX": 80, "band": "mid" },
+        { "item": "fridge", "offsetX": 220, "band": "near" }
+      ]
+    },
+    {
+      "id": "farm_ruin",
+      "displayName": "FARM RUIN",
+      "triggerDistanceM": 1220,
+      "lengthPx": 1000,
+      "visualTheme": "farm",
+      "isMajor": false,
+      "props": [
+        { "type": "barn_shed", "offsetX": 40, "band": "far" },
+        { "type": "broken_fence", "offsetX": -200, "band": "mid" },
+        { "type": "hay_bale", "offsetX": -80, "band": "near" },
+        { "type": "water_trough", "offsetX": 160, "band": "mid" },
+        { "type": "rusty_tractor", "offsetX": 240, "band": "far" }
+      ],
+      "loot": [
+        { "item": "fuel", "offsetX": -100, "band": "far" },
+        { "item": "sheep", "offsetX": 40, "band": "near" },
+        { "item": "egg", "offsetX": 60, "band": "far" },
+        { "item": "sheep", "offsetX": 80, "band": "mid" },
+        { "item": "survivor", "offsetX": 200, "band": "mid" },
+        { "item": "junk", "offsetX": 250, "band": "near" }
+      ]
+    },
+    {
+      "id": "rail_yard",
+      "displayName": "RAIL YARD MAINTENANCE",
+      "triggerDistanceM": 1700,
+      "lengthPx": 1150,
+      "visualTheme": "rail_yard",
+      "isMajor": true,
+      "props": [
+        { "type": "maintenance_shed", "offsetX": 80, "band": "far" },
+        { "type": "signal_light", "offsetX": -150, "band": "far" },
+        { "type": "broken_wheelset", "offsetX": -40, "band": "mid" },
+        { "type": "derailed_freight", "offsetX": 180, "band": "mid" },
+        { "type": "tool_cart", "offsetX": 270, "band": "near" }
+      ],
+      "loot": [
+        { "item": "battery", "offsetX": -80, "band": "far" },
+        { "item": "flat_car", "offsetX": 50, "band": "near" },
+        { "item": "turret", "offsetX": 70, "band": "far" },
+        { "item": "gold", "offsetX": 90, "band": "mid" },
+        { "item": "parts", "offsetX": 240, "band": "near" }
+      ]
+    },
+    {
+      "id": "dry_scrap",
+      "displayName": "DRY ROADSIDE SCRAP",
+      "triggerDistanceM": 2180,
+      "lengthPx": 850,
+      "visualTheme": "scrap",
+      "isMajor": false,
+      "props": [
+        { "type": "stone_cairn", "offsetX": -120, "band": "far" },
+        { "type": "rusted_tank", "offsetX": 20, "band": "far" },
+        { "type": "desert_sign", "offsetX": 140, "band": "mid" }
+      ],
+      "loot": [
+        { "item": "fuel", "offsetX": 40, "band": "near" },
+        { "item": "gold", "offsetX": 60, "band": "mid" },
+        { "item": "fuel", "offsetX": 80, "band": "far" },
+        { "item": "junk", "offsetX": 180, "band": "near" }
+      ]
+    },
+    {
+      "id": "military_wreck",
+      "displayName": "MILITARY CONVOY WRECK",
+      "triggerDistanceM": 2700,
+      "lengthPx": 1100,
+      "visualTheme": "military",
+      "isMajor": false,
+      "props": [
+        { "type": "armored_apc", "offsetX": 40, "band": "far" },
+        { "type": "sandbag_wall", "offsetX": -140, "band": "mid" },
+        { "type": "roadblock_barrier", "offsetX": -60, "band": "near" },
+        { "type": "ammo_crates", "offsetX": 160, "band": "mid" },
+        { "type": "burnt_chassis", "offsetX": 260, "band": "far" }
+      ],
+      "loot": [
+        { "item": "parts", "offsetX": -100, "band": "far" },
+        { "item": "turret", "offsetX": 50, "band": "far" },
+        { "item": "explosive", "offsetX": 60, "band": "near" },
+        { "item": "battery", "offsetX": 80, "band": "mid" },
+        { "item": "gold", "offsetX": 220, "band": "mid" },
+        { "item": "junk", "offsetX": 260, "band": "near" }
+      ]
+    },
+    {
+      "id": "lab_accident",
+      "displayName": "CONTAINMENT ACCIDENT SITE",
+      "triggerDistanceM": 3450,
+      "lengthPx": 1100,
+      "visualTheme": "lab",
+      "isMajor": false,
+      "props": [
+        { "type": "lab_truck", "offsetX": 20, "band": "far" },
+        { "type": "hazard_tank", "offsetX": -160, "band": "mid" },
+        { "type": "stasis_pod", "offsetX": -60, "band": "far" },
+        { "type": "loose_cables", "offsetX": 120, "band": "near" },
+        { "type": "broken_cage", "offsetX": 220, "band": "mid" }
+      ],
+      "loot": [
+        { "item": "survivor", "offsetX": -80, "band": "mid" },
+        { "item": "egg", "offsetX": 40, "band": "far" },
+        { "item": "fridge", "offsetX": 80, "band": "near" },
+        { "item": "battery", "offsetX": 180, "band": "far" },
+        { "item": "gold", "offsetX": 220, "band": "mid" },
+        { "item": "parts", "offsetX": 250, "band": "near" }
+      ]
+    },
+    {
+      "id": "broken_freight",
+      "displayName": "DERAILED CARGO TRAIN",
+      "triggerDistanceM": 4050,
+      "lengthPx": 1150,
+      "visualTheme": "rail_yard",
+      "isMajor": true,
+      "props": [
+        { "type": "cargo_container", "offsetX": -120, "band": "far" },
+        { "type": "cargo_container", "offsetX": 160, "band": "mid" },
+        { "type": "crane_ruin", "offsetX": 60, "band": "far" },
+        { "type": "spilled_crates", "offsetX": 260, "band": "near" }
+      ],
+      "loot": [
+        { "item": "gold", "offsetX": -90, "band": "mid" },
+        { "item": "flat_car", "offsetX": 50, "band": "near" },
+        { "item": "fuel", "offsetX": 70, "band": "far" },
+        { "item": "turret", "offsetX": 90, "band": "mid" },
+        { "item": "sheep", "offsetX": 220, "band": "near" }
+      ]
+    },
+    {
+      "id": "last_temptation",
+      "displayName": "HAVEN PERIMETER JUNCTION",
+      "triggerDistanceM": 4470,
+      "lengthPx": 1000,
+      "visualTheme": "haven_approach",
+      "isMajor": false,
+      "props": [
+        { "type": "haven_gate", "offsetX": 200, "band": "far" },
+        { "type": "fallen_billboard", "offsetX": -120, "band": "mid" },
+        { "type": "security_turnstile", "offsetX": 60, "band": "far" },
+        { "type": "scatter_rubble", "offsetX": -40, "band": "near" }
+      ],
+      "loot": [
+        { "item": "fuel", "offsetX": 40, "band": "near" },
+        { "item": "gold", "offsetX": 60, "band": "far" },
+        { "item": "gold", "offsetX": 80, "band": "mid" },
+        { "item": "sheep", "offsetX": 200, "band": "near" },
+        { "item": "explosive", "offsetX": 240, "band": "far" }
+      ]
+    }
+  ]
+}

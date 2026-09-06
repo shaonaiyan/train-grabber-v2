@@ -3,7 +3,8 @@ import { TrainCar, CarType } from './TrainCar';
 import { TrainStatsManager } from './TrainStats';
 import { PowerSystem } from './PowerSystem';
 import { LoadSystem } from './LoadSystem';
-import { ItemData, ItemId, InstalledModule, SlotType } from '../core/Types';
+import { CargoSystem } from './CargoSystem';
+import { ItemData, ItemId, InstalledModule, CargoItem, SlotType } from '../core/Types';
 import { EventBus } from '../core/EventBus';
 import { ParticleManager } from '../fx/Particles';
 import { AudioManager } from '../fx/AudioManager';
@@ -15,6 +16,7 @@ export class TrainManager {
   public stats: TrainStatsManager;
   public power: PowerSystem;
   public load: LoadSystem;
+  public cargo: CargoSystem;
   private eventBus: EventBus;
   private particles: ParticleManager;
   private audio: AudioManager;
@@ -25,7 +27,6 @@ export class TrainManager {
   private discardedCount: number = 0;
   private moduleCounter: number = 0;
 
-  private hoveredModule: InstalledModule | null = null;
   private tooltipText: Phaser.GameObjects.Text | null = null;
   private tooltipBg: Phaser.GameObjects.Graphics | null = null;
 
@@ -38,8 +39,8 @@ export class TrainManager {
     this.stats = new TrainStatsManager();
     this.power = new PowerSystem();
     this.load = new LoadSystem();
+    this.cargo = new CargoSystem();
 
-    // Section 6: Train front center X ≈ 620~670, Track Baseline Y ≈ 710
     this.rootX = 650;
     this.rootY = balanceData.depth.trackY - 2;
 
@@ -62,7 +63,9 @@ export class TrainManager {
       type,
       index,
       (module) => this.discardModule(module),
-      (module, screenX, screenY) => this.updateModuleTooltip(module, screenX, screenY)
+      (module, screenX, screenY) => this.updateModuleTooltip(module, screenX, screenY),
+      (instanceId) => this.discardCargo(instanceId),
+      (cargo, screenX, screenY) => this.updateCargoTooltip(cargo, screenX, screenY)
     );
     this.cars.push(car);
     return car;
@@ -88,6 +91,7 @@ export class TrainManager {
   }
 
   public attachFlatCar(itemData: ItemData): boolean {
+    // Section 46 & 91: Max 2 flat cars in V3
     if (this.flatCarCount >= balanceData.train.maxFlatCars) {
       return false;
     }
@@ -98,7 +102,6 @@ export class TrainManager {
     this.repositionCars();
     this.recalculateAllStats();
 
-    // Section 57: Clang impact, bounce, particles
     newCar.dipOnInstall();
     this.particles.emitInstallBurst(newCar.baseCarX, newCar.baseCarY);
     this.audio.playInstall();
@@ -114,7 +117,6 @@ export class TrainManager {
   }
 
   private updateCameraFraming(): void {
-    // Section 5: Smooth 500~700ms tween zoom
     const cam = this.scene.cameras.main;
     let targetZoom = 1.0;
     if (this.cars.length >= 6) {
@@ -135,9 +137,17 @@ export class TrainManager {
 
   public hasSlotFor(item: ItemData): boolean {
     if (item.type === 'Consumable') return true;
+
     if (item.type === 'Car') {
       return this.flatCarCount < balanceData.train.maxFlatCars;
     }
+
+    if (item.type === 'Cargo') {
+      const size = item.cargoSize ?? 1;
+      return this.cargo.canAcceptCargo(size);
+    }
+
+    // Module (TOP or SIDE)
     const slotType = item.slot;
     if (!slotType) return false;
 
@@ -152,25 +162,56 @@ export class TrainManager {
   public canFitLoad(item: ItemData): boolean {
     if (item.type === 'Consumable') return true;
 
-    // Section 58-59: Flat Car special calculation (newLoad <= newMaxLoad)
+    // Section 20: Flat Car special calculation
     if (item.type === 'Car') {
-      const newLoad = this.load.getCurrentLoad() + balanceData.train.flatCarInstallLoad;
-      const newMaxLoad = this.load.getMaxLoad() + balanceData.train.flatCarMaxLoadBonus;
-      return newLoad <= newMaxLoad;
+      return this.load.canAcceptFlatCar();
     }
 
     const weight = item.installLoad || item.load || 0;
-    return this.load.canFitLoad(weight);
+    return this.load.canAcceptLoad(weight);
   }
 
-  public installItem(item: ItemData, isTradeLine: boolean = false): boolean {
+  public installItem(item: ItemData): boolean {
+    if (item.type === 'Consumable') {
+      if (item.hpBonus) {
+        this.stats.addHp(item.hpBonus);
+      }
+      if (item.fuelBonus) {
+        this.stats.addFuel(item.fuelBonus);
+      }
+      return true;
+    }
+
     if (item.type === 'Car') {
       return this.attachFlatCar(item);
     }
 
-    if (!item.slot) return false;
+    if (item.type === 'Cargo') {
+      const cargoItem = this.cargo.addCargo(item);
+      if (!cargoItem) return false;
 
-    // Search from front to back for the first compatible empty slot (Section 21)
+      // Place visual inside car with lowest cargo count
+      const eligibleCars = this.cars.filter((c) => c.type === 'cargo' || c.type === 'flat');
+      if (eligibleCars.length > 0) {
+        let bestCar = eligibleCars[0];
+        for (const car of eligibleCars) {
+          if (car.cargoVisuals.size < bestCar.cargoVisuals.size) {
+            bestCar = car;
+          }
+        }
+        cargoItem.carIndex = bestCar.carIndex;
+        bestCar.addCargoVisual(cargoItem, bestCar.cargoVisuals.size);
+
+        this.particles.emitInstallBurst(bestCar.baseCarX, bestCar.baseCarY - 10);
+        this.audio.playInstall();
+        this.recalculateAllStats();
+        return true;
+      }
+      return false;
+    }
+
+    // Module (turret or battery)
+    if (!item.slot) return false;
     for (const car of this.cars) {
       const slot = car.getAvailableSlot(item.slot);
       if (slot) {
@@ -182,7 +223,7 @@ export class TrainManager {
           carIndex: car.carIndex,
           slotType: item.slot,
           installedTime: (this.scene as any).runTimeSec || 0,
-          fromTradeLine: item.fromTradeLine || isTradeLine,
+          fromTradeLine: false,
           stateTimer: 0,
         };
 
@@ -202,56 +243,69 @@ export class TrainManager {
     return false;
   }
 
+  public discardCargo(instanceId: string): void {
+    const cargoItem = this.cargo.removeCargo(instanceId);
+    if (!cargoItem) return;
+
+    // Find car that rendered this cargo
+    const car = this.cars.find((c) => c.carIndex === cargoItem.carIndex);
+    if (car) {
+      car.removeCargoVisual(instanceId);
+    }
+
+    this.discardedCount++;
+    this.audio.playDiscard();
+
+    const carX = car ? car.baseCarX : this.rootX - 100;
+    const carY = car ? car.baseCarY : this.rootY;
+    this.spawnDiscardedVisual(carX, carY - 15, cargoItem.itemId);
+
+    // Section 41: Explosive discard detonation
+    if (cargoItem.itemId === 'explosive') {
+      this.eventBus.emit('ITEM_DISCARDED_EXPLOSIVE', {
+        x: carX - 40,
+        y: carY + 10,
+      });
+    }
+
+    this.recalculateAllStats();
+
+    this.eventBus.emit('ITEM_DISCARDED', {
+      item: cargoItem.itemId,
+      discardedItem: cargoItem.itemId,
+      loadAfter: this.load.getCurrentLoad(),
+      cargoAfter: this.getCargoValue(),
+      time: (this.scene as any).runTimeSec || 0,
+      reasonContext: {
+        currentLoad: this.load.getCurrentLoad(),
+        safeMaxLoad: this.load.getSafeMaxLoad(),
+        fuel: this.stats.fuel,
+      },
+    });
+  }
+
   public discardModule(module: InstalledModule): void {
     const car = this.cars[module.carIndex];
     if (!car) return;
-
-    const loadBefore = this.load.getCurrentLoad();
-    const cargoBefore = this.getCargoValue();
-    const powerBefore = this.power.getSupply();
 
     const removed = car.removeModule(module.uid);
     if (removed) {
       this.discardedCount++;
       this.audio.playDiscard();
 
-      // Launch physical discarded object flying out (Section 51)
-      this.spawnDiscardedVisual(
-        car.baseCarX,
-        car.baseCarY - 15,
-        module.itemId
-      );
-
-      // Check if discarded item is explosive barrel (Section 47)
-      if (module.itemId === 'explosive') {
-        this.eventBus.emit('ITEM_DISCARDED_EXPLOSIVE', {
-          x: car.baseCarX - 30,
-          y: car.baseCarY + 10,
-        });
-      }
-
+      this.spawnDiscardedVisual(car.baseCarX, car.baseCarY - 15, module.itemId);
       this.recalculateAllStats();
-
-      const loadAfter = this.load.getCurrentLoad();
-      const cargoAfter = this.getCargoValue();
-      const powerAfter = this.power.getSupply();
 
       this.eventBus.emit('ITEM_DISCARDED', {
         item: module.itemId,
         discardedItem: module.itemId,
-        loadBefore,
-        loadAfter,
-        cargoBefore,
-        cargoAfter,
-        powerBefore,
-        powerAfter,
+        loadAfter: this.load.getCurrentLoad(),
+        cargoAfter: this.getCargoValue(),
         time: (this.scene as any).runTimeSec || 0,
         reasonContext: {
-          currentLoad: loadAfter,
-          maxLoad: this.load.getMaxLoad(),
+          currentLoad: this.load.getCurrentLoad(),
+          safeMaxLoad: this.load.getSafeMaxLoad(),
           fuel: this.stats.fuel,
-          powerSupply: powerAfter,
-          powerDemand: this.power.getDemand(),
         },
       });
     }
@@ -266,7 +320,6 @@ export class TrainManager {
     g.fillCircle(0, 0, 12);
     discardSprite.add(g);
 
-    // Parabolic fling backwards onto the track
     this.scene.tweens.add({
       targets: discardSprite,
       x: startX - 180,
@@ -290,7 +343,11 @@ export class TrainManager {
   }
 
   public recalculateAllStats(): void {
-    let installedLoad = 0;
+    // 1. Cargo capacity
+    this.cargo.recalculateCapacity(this.flatCarCount);
+
+    // 2. Installed modules stats
+    let moduleLoadSum = 0;
     let batteries = 0;
     let turrets = 0;
 
@@ -298,49 +355,28 @@ export class TrainManager {
       for (const slot of car.slots) {
         if (slot.installedModule) {
           const mod = slot.installedModule;
-          installedLoad += mod.data.load || 0;
+          moduleLoadSum += mod.data.load || 0;
           if (mod.itemId === 'battery') batteries++;
           if (mod.itemId === 'turret') turrets++;
         }
       }
     }
 
+    // 3. Cargo physical load & overflow penalty
+    const cargoPhysicalLoad = this.cargo.getTotalPhysicalLoad();
+    const cargoOverflowLoad = this.cargo.getOverflowLoadPenalty();
+
+    // 4. Update Power & Load systems
     this.power.recalculate(batteries, turrets);
-    this.load.recalculate(installedLoad, this.flatCarCount);
+    this.load.recalculate(moduleLoadSum + cargoPhysicalLoad, this.flatCarCount, cargoOverflowLoad);
   }
 
   public getCargoValue(): number {
-    // Section 66-67: Only gold, sheep, survivor, food fridge, friendly egg, junk
-    let total = 0;
-    const modules = this.getAllInstalledModules();
-    for (const m of modules) {
-      if (m.itemId === 'gold') {
-        total += m.fromTradeLine ? 168 : 140;
-      } else if (m.itemId === 'sheep') {
-        total += m.fromTradeLine ? 108 : 90;
-      } else if (m.itemId === 'survivor') {
-        total += 50;
-      } else if (m.itemId === 'junk') {
-        total += 5;
-      } else if (m.itemId === 'fridge' && m.customData?.outcome === 'FOOD') {
-        total += 80;
-      } else if (m.itemId === 'egg' && m.customData?.outcome === 'FRIENDLY') {
-        total += 60;
-      }
-    }
-    return total;
+    return this.cargo.getTotalCargoValue();
   }
 
   public getSurvivorCount(): number {
-    let count = 0;
-    for (const car of this.cars) {
-      for (const slot of car.slots) {
-        if (slot.installedModule && slot.installedModule.itemId === 'survivor') {
-          count++;
-        }
-      }
-    }
-    return count;
+    return this.cargo.getCargoItems().filter((c) => c.itemId === 'survivor').length;
   }
 
   public getAllInstalledModules(): InstalledModule[] {
@@ -355,18 +391,6 @@ export class TrainManager {
     return list;
   }
 
-  public getAvailableSlotCount(): Record<SlotType, number> {
-    const counts: Record<SlotType, number> = { TOP: 0, BODY: 0, SIDE: 0 };
-    for (const car of this.cars) {
-      for (const slot of car.slots) {
-        if (!slot.isOccupied()) {
-          counts[slot.type]++;
-        }
-      }
-    }
-    return counts;
-  }
-
   public getCarCount(): number {
     return this.cars.length;
   }
@@ -379,66 +403,82 @@ export class TrainManager {
     return this.discardedCount;
   }
 
-  public aimTurretsAt(targetX: number, targetY: number): void {
+  public getAvailableSlotCount(): Record<SlotType, number> {
+    const counts: Record<SlotType, number> = { TOP: 0, SIDE: 0, BODY: 0, CRANE: 0 };
     for (const car of this.cars) {
-      car.aimTurrets(targetX, targetY);
+      for (const slot of car.slots) {
+        if (!slot.isOccupied()) {
+          counts[slot.type]++;
+        }
+      }
     }
-  }
-
-  public update(time: number, delta: number, speed: number): void {
-    const powerEfficiency = this.power.getEfficiency();
-    const hasShortage = this.power.hasShortage();
-
-    for (const car of this.cars) {
-      car.update(time, speed, powerEfficiency, hasShortage);
-    }
-
-    if (speed > 10) {
-      const loco = this.cars[0];
-      this.particles.emitTrainSmoke(loco.baseCarX + 65, loco.baseCarY - 60);
-      this.particles.emitWheelDust(loco.baseCarX - 40, loco.baseCarY + 34);
-    }
+    return counts;
   }
 
   private createTooltipUI(): void {
     this.tooltipBg = this.scene.add.graphics();
-    this.tooltipBg.setDepth(150);
+    this.tooltipBg.setDepth(250);
     this.tooltipBg.setVisible(false);
 
     this.tooltipText = this.scene.add.text(0, 0, '', {
       fontFamily: 'Consolas, monospace',
-      fontSize: '14px',
-      fontStyle: 'bold',
+      fontSize: '13px',
       color: '#ffffff',
-      stroke: '#000000',
-      strokeThickness: 3,
       align: 'center',
     });
-    this.tooltipText.setDepth(151);
+    this.tooltipText.setDepth(251);
     this.tooltipText.setVisible(false);
   }
 
   private updateModuleTooltip(module: InstalledModule | null, screenX: number, screenY: number): void {
-    if (!module || !this.tooltipText || !this.tooltipBg) {
-      if (this.tooltipText) this.tooltipText.setVisible(false);
-      if (this.tooltipBg) this.tooltipBg.setVisible(false);
-      this.hoveredModule = null;
+    if (!module || !this.tooltipBg || !this.tooltipText) {
+      this.tooltipBg?.setVisible(false);
+      this.tooltipText?.setVisible(false);
       return;
     }
 
-    this.hoveredModule = module;
-    const desc = module.data.description || module.data.name;
-    const textStr = `${desc}\n[Right Click: DISCARD]`;
-    this.tooltipText.setText(textStr);
-    this.tooltipText.setPosition(screenX + 15, screenY - 45);
-    this.tooltipText.setVisible(true);
+    const lines = [
+      module.data.name.toUpperCase(),
+      `Slot: ${module.slotType} | Load: ${module.data.load || 0}`,
+      '[Right-Click to Discard]',
+    ];
+    this.renderTooltipBox(lines, screenX, screenY);
+  }
 
-    const bounds = this.tooltipText.getBounds();
-    this.tooltipBg.clear();
-    this.tooltipBg.fillStyle(0x1a252f, 0.9);
-    this.tooltipBg.fillRoundedRect(bounds.x - 6, bounds.y - 4, bounds.width + 12, bounds.height + 8, 4);
-    this.tooltipBg.lineStyle(1.5, 0xe74c3c, 1);
-    this.tooltipBg.strokeRoundedRect(bounds.x - 6, bounds.y - 4, bounds.width + 12, bounds.height + 8, 4);
-    this.tooltipBg.setVisible(true);
+  private updateCargoTooltip(cargo: CargoItem | null, screenX: number, screenY: number): void {
+    if (!cargo || !this.tooltipBg || !this.tooltipText) {
+      this.tooltipBg?.setVisible(false);
+      this.tooltipText?.setVisible(false);
+      return;
+    }
+
+    const lines = [
+      cargo.itemId.toUpperCase(),
+      `Value: $${cargo.cargoValue} | Load: ${cargo.load} (Size ${cargo.cargoSize})`,
+      '[Right-Click to Discard]',
+    ];
+    this.renderTooltipBox(lines, screenX, screenY);
+  }
+
+  private renderTooltipBox(lines: string[], screenX: number, screenY: number): void {
+    const content = lines.join('\n');
+    this.tooltipText!.setText(content);
+    this.tooltipText!.setPosition(screenX - 75, screenY - 60);
+
+    const bounds = this.tooltipText!.getBounds();
+    this.tooltipBg!.clear();
+    this.tooltipBg!.fillStyle(0x0a0d14, 0.92);
+    this.tooltipBg!.fillRoundedRect(bounds.x - 8, bounds.y - 6, bounds.width + 16, bounds.height + 12, 6);
+    this.tooltipBg!.lineStyle(1.5, 0x00ffcc, 0.8);
+    this.tooltipBg!.strokeRoundedRect(bounds.x - 8, bounds.y - 6, bounds.width + 16, bounds.height + 12, 6);
+
+    this.tooltipBg!.setVisible(true);
+    this.tooltipText!.setVisible(true);
+  }
+
+  public update(time: number, delta: number, worldSpeed: number): void {
+    for (const car of this.cars) {
+      car.update(time, delta, worldSpeed);
+    }
   }
 }

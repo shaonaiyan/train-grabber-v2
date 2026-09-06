@@ -1,33 +1,43 @@
 import Phaser from 'phaser';
 import { EventBus } from '../core/EventBus';
 
-export type DroneState = 'APPROACH' | 'ATTACK' | 'RETREAT' | 'EXIT';
+export type DroneState = 'APPROACH' | 'TELEGRAPH' | 'ATTACK' | 'RETREAT' | 'EXIT';
 
 export class AttackDrone {
   public scene: Phaser.Scene;
   public container: Phaser.GameObjects.Container;
   public shadow: Phaser.GameObjects.Graphics;
-  public hp: number = 42;
-  public maxHp: number = 42;
+  public id: string = 'drone';
+  public hp: number = 45; // Section 109: HP = 45
+  public maxHp: number = 45;
   public isDead: boolean = false;
-  public priority: number = 2; // Priority 2 > 1 (Turret targets Drone first)
+  public priority: number = 2;
 
   public state: DroneState = 'APPROACH';
-  private attackInterval: number = 1.8; // Section 78
+  private attackInterval: number = 1.5; // Section 109: 1.5s
   private attackTimer: number = 0;
+  private telegraphTimer: number = 0.8; // Section 109: 0.8s
   private shotsFired: number = 0;
-  private maxShots: number = 4; // Section 78
+  private maxShots: number = 3; // Section 109: Max 3 shots (12 dmg max)
   private damage: number = 4;
   private healthBar: Phaser.GameObjects.Graphics;
+  private laserPointer: Phaser.GameObjects.Graphics;
   private onAttackTrain: (damage: number) => void;
   private baseY: number;
+
+  public get isTelegraphing(): boolean {
+    return this.state === 'TELEGRAPH';
+  }
+
+  public get isRetreating(): boolean {
+    return this.state === 'RETREAT' || this.state === 'EXIT';
+  }
 
   constructor(scene: Phaser.Scene, startX: number, startY: number, onAttack: (damage: number) => void) {
     this.scene = scene;
     this.baseY = startY;
     this.onAttackTrain = onAttack;
 
-    // Ground contact shadow for flying drone (Section 10)
     this.shadow = scene.add.graphics();
     this.shadow.fillStyle(0x000000, 0.25);
     this.shadow.fillEllipse(0, 0, 36, 12);
@@ -39,6 +49,10 @@ export class AttackDrone {
 
     this.buildVisuals();
 
+    this.laserPointer = scene.add.graphics();
+    this.laserPointer.setDepth(24);
+    this.laserPointer.setVisible(false);
+
     this.healthBar = scene.add.graphics();
     this.container.add(this.healthBar);
     this.updateHealthBar();
@@ -49,29 +63,24 @@ export class AttackDrone {
   private buildVisuals(): void {
     const g = this.scene.add.graphics();
 
-    // Quad-rotor arms
     g.lineStyle(2, 0x34495e, 1);
     g.lineBetween(-22, -10, 22, 10);
     g.lineBetween(-22, 10, 22, -10);
 
-    // Rotors
     g.fillStyle(0x7f8c8d, 0.7);
     g.fillEllipse(-22, -10, 14, 4);
     g.fillEllipse(22, -10, 14, 4);
     g.fillEllipse(-22, 10, 14, 4);
     g.fillEllipse(22, 10, 14, 4);
 
-    // Central fuselage
     g.fillStyle(0xd35400, 1);
     g.fillCircle(0, 0, 12);
     g.lineStyle(2, 0xa04000, 1);
     g.strokeCircle(0, 0, 12);
 
-    // Glowing red eye
     g.fillStyle(0xff0033, 1);
     g.fillCircle(0, 2, 4.5);
 
-    // Pulse laser under-barrel
     g.fillStyle(0x111111, 1);
     g.fillRect(-2, 10, 4, 8);
 
@@ -110,20 +119,39 @@ export class AttackDrone {
     }
   }
 
-  public update(dt: number, worldSpeed: number, trainFrontX: number): void {
+  public update(dt: number, worldSpeed: number, trainFrontX: number, baseSpeedPx: number = 160): void {
     if (this.isDead) return;
 
-    // Hover bobbing
     const hover = Math.sin(this.scene.time.now * 0.005) * 12;
     this.container.y = this.baseY + hover;
     this.shadow.x = this.container.x;
 
+    const closingBonus = Math.max(0, (baseSpeedPx - worldSpeed) * 0.8);
+
     switch (this.state) {
       case 'APPROACH':
-        this.container.x -= (worldSpeed + 35) * dt;
+        this.container.x -= (worldSpeed + 35 + closingBonus) * dt;
         if (this.container.x - trainFrontX <= 540) {
+          this.state = 'TELEGRAPH';
+          this.telegraphTimer = 0.8;
+          this.laserPointer.setVisible(true);
+        }
+        break;
+
+      case 'TELEGRAPH':
+        this.container.x -= (worldSpeed + 10) * dt;
+        this.telegraphTimer -= dt;
+
+        // Render faint targeting line
+        this.laserPointer.clear();
+        this.laserPointer.lineStyle(1, 0xff0000, 0.4);
+        this.laserPointer.lineBetween(this.container.x, this.container.y, trainFrontX - 50, 710);
+
+        if (this.telegraphTimer <= 0) {
+          this.laserPointer.setVisible(false);
           this.state = 'ATTACK';
-          this.attackTimer = 0.5; // Short delay before first laser
+          this.attackTimer = 0;
+          this.fireLaserAtTrain();
         }
         break;
 
@@ -142,13 +170,14 @@ export class AttackDrone {
         break;
 
       case 'RETREAT':
-        // Section 78: Flies up and away
-        this.container.x -= (worldSpeed + 60) * dt;
+        this.container.x -= (worldSpeed + 65) * dt;
         this.baseY -= 45 * dt;
         if (this.container.x < -160 || this.container.y < 100) {
           this.state = 'EXIT';
           this.isDead = true;
           this.shadow.destroy();
+          this.laserPointer.destroy();
+          EventBus.getInstance().emit('ENEMY_ESCAPED', { type: 'drone' });
           this.container.destroy();
         }
         break;
@@ -164,7 +193,7 @@ export class AttackDrone {
     this.shotsFired++;
 
     const laser = this.scene.add.graphics();
-    laser.lineStyle(2, 0xff0044, 0.9);
+    laser.lineStyle(2.5, 0xff0044, 0.95);
     laser.lineBetween(this.container.x, this.container.y + 12, 530, 710);
     laser.setDepth(33);
     this.scene.time.delayedCall(90, () => laser.destroy());
@@ -180,6 +209,7 @@ export class AttackDrone {
     this.isDead = true;
     EventBus.getInstance().emit('ENEMY_KILLED', { type: 'drone' });
     this.shadow.destroy();
+    this.laserPointer.destroy();
 
     this.scene.tweens.add({
       targets: this.container,

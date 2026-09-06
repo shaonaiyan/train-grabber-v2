@@ -4,6 +4,7 @@ import { SeededRandom } from '../core/SeededRandom';
 import { AudioManager } from '../fx/AudioManager';
 import { JuiceManager } from '../fx/JuiceManager';
 import { EventBus } from '../core/EventBus';
+import { CargoItem } from '../core/Types';
 
 export class ItemEffectSystem {
   private scene: Phaser.Scene;
@@ -32,13 +33,13 @@ export class ItemEffectSystem {
 
   public update(delta: number): void {
     const dt = delta * 0.001;
-    const modules = this.trainManager.getAllInstalledModules();
+    const cargoItems = this.trainManager.cargo.getCargoItems();
 
-    // 1. Survivor HP regen (Every 4.0s +1 HP)
+    // 1. Survivor HP regen (Section 121: 1 HP / 5 sec)
     const survivorCount = this.trainManager.getSurvivorCount();
     if (survivorCount > 0) {
       this.survivorTimer += dt;
-      if (this.survivorTimer >= 4.0) {
+      if (this.survivorTimer >= 5.0) {
         this.survivorTimer = 0;
         const totalHeal = survivorCount * 1;
         this.trainManager.stats.addHp(totalHeal);
@@ -48,7 +49,7 @@ export class ItemEffectSystem {
     }
 
     // 2. Sheep occasional bleat
-    const hasSheep = modules.some((m) => m.itemId === 'sheep');
+    const hasSheep = cargoItems.some((c) => c.itemId === 'sheep');
     if (hasSheep) {
       this.sheepBleatTimer -= dt;
       if (this.sheepBleatTimer <= 0) {
@@ -58,71 +59,79 @@ export class ItemEffectSystem {
       }
     }
 
-    // 3. Fridge and Egg Timers
-    for (const mod of modules) {
-      if (mod.isProcessed) continue;
+    // 3. Fridge and Egg Timers in CargoSystem
+    for (const cargo of cargoItems) {
+      if (cargo.customData?.isProcessed) continue;
 
-      if (mod.itemId === 'fridge') {
-        mod.stateTimer = (mod.stateTimer || 0) + dt;
-        if (mod.stateTimer >= 12.0) {
-          mod.isProcessed = true;
-          this.resolveFridge(mod);
+      if (cargo.itemId === 'fridge') {
+        cargo.customData = cargo.customData || {};
+        cargo.customData.stateTimer = (cargo.customData.stateTimer || 0) + dt;
+
+        // Section 122: openTime = 10.0 sec
+        if (cargo.customData.stateTimer >= 10.0) {
+          cargo.customData.isProcessed = true;
+          this.resolveFridge(cargo);
         }
-      } else if (mod.itemId === 'egg') {
-        mod.stateTimer = (mod.stateTimer || 0) + dt;
-        if (mod.stateTimer >= 20.0) {
-          mod.isProcessed = true;
-          this.resolveEgg(mod);
+      } else if (cargo.itemId === 'egg') {
+        cargo.customData = cargo.customData || {};
+        cargo.customData.stateTimer = (cargo.customData.stateTimer || 0) + dt;
+
+        // Section 126: hatchTime = 15.0 sec
+        if (cargo.customData.stateTimer >= 15.0) {
+          cargo.customData.isProcessed = true;
+          this.resolveEgg(cargo);
         }
       }
     }
   }
 
-  private resolveFridge(mod: any): void {
-    // Section 30: Deterministic outcome based on unique outcomeSeed
-    const itemSeed = mod.data?.outcomeSeed || 42;
+  private resolveFridge(cargo: CargoItem): void {
+    const itemSeed = cargo.customData?.outcomeSeed || 42;
     const mysteryRng = new SeededRandom(itemSeed);
-    const roll = mysteryRng.nextFloat(); // 0 to 1
+    const roll = mysteryRng.nextFloat();
 
     if (roll < 0.40) {
-      // 40% Food: Finish score +80, fridge remains
-      mod.customData = { outcome: 'FOOD', bonusScore: 80 };
-      this.juice.showFloatingText(450, 630, 'FRIDGE: FOOD! (+80)', '#f1c40f', '24px');
+      // 40% Food: CargoValue +80, stays on train
+      cargo.cargoValue += 80;
+      cargo.customData = { ...cargo.customData, outcome: 'FOOD' };
+      this.trainManager.recalculateAllStats();
+      this.juice.showFloatingText(450, 630, 'FRIDGE: FOOD! (+$80)', '#f1c40f', '24px');
       this.audio.playFuelGulp();
-      this.eventBus.emit('FRIDGE_OPEN', { outcome: 'FOOD', scoreBonus: 80 });
+      this.eventBus.emit('FRIDGE_OPEN', { outcome: 'FOOD', cargoBonus: 80 });
     } else if (roll < 0.75) {
-      // 35% Repair Bot: HP +25, fridge disappears, releases Slot & Load -9
+      // 35% Repair Bot: HP +25, fridge disappears, releases space & load
       this.trainManager.stats.addHp(25);
-      this.trainManager.discardModule(mod);
+      this.trainManager.discardCargo(cargo.instanceId);
       this.juice.showFloatingText(450, 630, 'REPAIR BOT! (+25 HP)', '#2ecc71', '24px');
       this.audio.playRepair();
       this.eventBus.emit('FRIDGE_OPEN', { outcome: 'REPAIR_BOT', hpBonus: 25 });
     } else {
-      // 25% Hostile Critter: HP -18, fridge disappears, releases Slot & Load -9
+      // 25% Hostile Critter: HP -18, fridge disappears, releases space & load
       this.trainManager.stats.takeDamage(18, 'fridge_critter');
-      this.trainManager.discardModule(mod);
+      this.trainManager.discardCargo(cargo.instanceId);
       this.juice.flashDamage();
       this.juice.showFloatingText(450, 630, 'CRITTER ATTACK! (-18 HP)', '#e74c3c', '24px');
       this.eventBus.emit('FRIDGE_OPEN', { outcome: 'HOSTILE', damage: 18 });
     }
   }
 
-  private resolveEgg(mod: any): void {
-    // Section 30: Deterministic outcome based on unique outcomeSeed
-    const itemSeed = (mod.data?.outcomeSeed || 88) + 1337;
+  private resolveEgg(cargo: CargoItem): void {
+    const itemSeed = (cargo.customData?.outcomeSeed || 88) + 1337;
     const mysteryRng = new SeededRandom(itemSeed);
     const roll = mysteryRng.nextFloat();
 
     if (roll < 0.60) {
-      // 60% Friendly Creature: attacks nearest enemy every 0.9s for 4 dmg, stays on car
-      mod.customData = { outcome: 'FRIENDLY', isCreature: true, attackTimer: 0 };
-      this.juice.showFloatingText(450, 630, 'EGG HATCHED: FRIENDLY!', '#9b59b6', '24px');
+      // 60% Friendly Creature: attacks nearest enemy every 0.9s for 4 dmg, stays on car, +$60 value
+      cargo.cargoValue += 60;
+      cargo.customData = { ...cargo.customData, outcome: 'FRIENDLY', isCreature: true, attackTimer: 0 };
+      this.trainManager.recalculateAllStats();
+      this.juice.showFloatingText(450, 630, 'EGG: FRIENDLY! (+$60)', '#9b59b6', '24px');
       this.audio.playSheep();
       this.eventBus.emit('EGG_HATCH', { outcome: 'FRIENDLY' });
     } else {
-      // 40% Hostile: HP -25, egg disappears, releases Slot & Load -7
+      // 40% Hostile: HP -25, egg disappears, releases space & load
       this.trainManager.stats.takeDamage(25, 'egg_hostile');
-      this.trainManager.discardModule(mod);
+      this.trainManager.discardCargo(cargo.instanceId);
       this.juice.flashDamage();
       this.juice.showFloatingText(450, 630, 'HOSTILE BEAST! (-25 HP)', '#e74c3c', '24px');
       this.eventBus.emit('EGG_HATCH', { outcome: 'HOSTILE', damage: 25 });
