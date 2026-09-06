@@ -99,6 +99,20 @@ export class ParticleManager {
     this.sparkParticles.emitParticleAt(x, y, 18);
   }
 
+  public emitSparks(x: number, y: number, count: number = 8): void {
+    this.sparkParticles.emitParticleAt(x, y, count);
+  }
+
+  public emitDust(x: number, y: number, count: number = 2): void {
+    this.dustParticles.emitParticleAt(x, y, count);
+  }
+
+  public emitEngineStrainSmoke(posOrX: { x: number; y: number } | number, y?: number): void {
+    const px = typeof posOrX === 'object' ? posOrX.x : posOrX;
+    const py = typeof posOrX === 'object' ? posOrX.y - 30 : (y ?? 0);
+    this.smokeParticles.emitParticleAt(px, py, 4);
+  }
+
   public emitExplosion(x: number, y: number): void {
     this.explosionParticles.emitParticleAt(x, y, 35);
   }

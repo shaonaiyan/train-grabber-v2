@@ -34,9 +34,9 @@ export class GameScene extends Phaser.Scene {
   private eventBus!: EventBus;
 
   // Managers & Directors
-  private particles!: ParticleManager;
-  private juice!: JuiceManager;
-  private audio!: AudioManager;
+  public particles!: ParticleManager;
+  public juice!: JuiceManager;
+  public audio!: AudioManager;
   public worldScroller!: WorldScroller;
   public trainManager!: TrainManager;
   public grapple!: Grapple;

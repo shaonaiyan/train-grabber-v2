@@ -28,8 +28,13 @@ export class JuiceManager {
     this.isHitStopActive = true;
   }
 
+  public hitStop(durationMs: number = 60): void {
+    this.triggerHitStop(durationMs);
+  }
+
   public screenShake(intensity: number = 0.005, durationMs: number = 150): void {
-    this.scene.cameras.main.shake(durationMs, intensity);
+    const finalIntensity = intensity > 0.5 ? intensity * 0.001 : intensity;
+    this.scene.cameras.main.shake(durationMs, finalIntensity);
   }
 
   public flashDamage(): void {
