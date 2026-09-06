@@ -1,0 +1,129 @@
+{
+  "items": {
+    "parts": {
+      "id": "parts",
+      "name": "Parts Crate",
+      "type": "Consumable",
+      "hookWeight": 4,
+      "hpBonus": 20,
+      "scoreBonus": 5,
+      "description": "REPAIR\nHP +20"
+    },
+    "fuel": {
+      "id": "fuel",
+      "name": "Fuel Barrel",
+      "type": "Consumable",
+      "hookWeight": 5,
+      "fuelBonus": 24,
+      "scoreBonus": 5,
+      "description": "FUEL\nFuel +24"
+    },
+    "gold": {
+      "id": "gold",
+      "name": "Gold Chest",
+      "type": "Persistent",
+      "slot": "BODY",
+      "load": 12,
+      "finishScore": 140,
+      "tradeLineBonusMultiplier": 1.2,
+      "description": "GOLD\nLoad 12 | Finish +140"
+    },
+    "turret": {
+      "id": "turret",
+      "name": "Auto Turret",
+      "type": "Persistent",
+      "slot": "TOP",
+      "load": 8,
+      "powerDemand": 2,
+      "damage": 8,
+      "baseFireRate": 3,
+      "range": 500,
+      "description": "TURRET\nLoad 8 | Power -2"
+    },
+    "battery": {
+      "id": "battery",
+      "name": "Power Battery",
+      "type": "Persistent",
+      "slot": "SIDE",
+      "load": 6,
+      "powerSupply": 3,
+      "description": "BATTERY\nLoad 6 | Power +3"
+    },
+    "flat_car": {
+      "id": "flat_car",
+      "name": "Flat Car",
+      "type": "Car",
+      "hookWeight": 16,
+      "installLoad": 8,
+      "maxLoadBonus": 22,
+      "fuelDrain": 0.035,
+      "maxInstances": 3,
+      "canDiscard": false,
+      "description": "FLAT CAR\n+Slots | MaxLoad +22\nFuel Drain +0.035/s"
+    },
+    "sheep": {
+      "id": "sheep",
+      "name": "Sheep",
+      "type": "Persistent",
+      "slot": "BODY",
+      "load": 5,
+      "finishScore": 90,
+      "tradeLineBonusMultiplier": 1.2,
+      "description": "SHEEP\nLoad 5 | Finish +90"
+    },
+    "survivor": {
+      "id": "survivor",
+      "name": "Survivor",
+      "type": "Persistent",
+      "slot": "BODY",
+      "load": 5,
+      "regenInterval": 4.0,
+      "regenHp": 1,
+      "fuelDrain": 0.008,
+      "finishScore": 50,
+      "description": "SURVIVOR\nRegen HP 1/4s\nFuel Drain +0.008/s"
+    },
+    "fridge": {
+      "id": "fridge",
+      "name": "Mystery Fridge",
+      "type": "Persistent",
+      "slot": "BODY",
+      "load": 9,
+      "openTime": 12.0,
+      "description": "FRIDGE\nLoad 9 | Opens in 12s"
+    },
+    "egg": {
+      "id": "egg",
+      "name": "Monster Egg",
+      "type": "Persistent",
+      "slot": "BODY",
+      "load": 7,
+      "hatchTime": 20.0,
+      "friendlyDmg": 4,
+      "friendlyInterval": 0.9,
+      "friendlyScore": 60,
+      "description": "EGG\nLoad 7 | Hatches in 20s"
+    },
+    "explosive": {
+      "id": "explosive",
+      "name": "Explosive Barrel",
+      "type": "Persistent",
+      "slot": "SIDE",
+      "load": 7,
+      "explodeDelay": 0.6,
+      "explodeRadius": 180,
+      "enemyDamage": 90,
+      "trainDamage": 10,
+      "description": "EXPLOSIVE\nLoad 7 | Drop to Detonate"
+    },
+    "junk": {
+      "id": "junk",
+      "name": "Junk Bundle",
+      "type": "Persistent",
+      "slot": "SIDE",
+      "load": 6,
+      "finishScore": 5,
+      "description": "JUNK\nLoad 6 | Finish +5"
+    }
+  }
+}

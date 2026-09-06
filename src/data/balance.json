@@ -1,0 +1,56 @@
+{
+  "train": {
+    "startXPercent": 0.28,
+    "startYPercent": 0.68,
+    "baseHp": 100,
+    "baseFuel": 70,
+    "maxFuel": 100,
+    "baseMaxLoad": 48,
+    "basePowerSupply": 2,
+    "baseWorldSpeed": 160,
+    "baseFuelDrain": 0.12,
+    "flatCarFuelDrain": 0.035,
+    "flatCarInstallLoad": 8,
+    "flatCarMaxLoadBonus": 22,
+    "maxFlatCars": 3,
+    "outOfFuelSpeedMultiplier": 0.45,
+    "outOfFuelFailDuration": 12.0
+  },
+  "loadTiers": {
+    "tier1Threshold": 0.70,
+    "tier1SpeedMultiplier": 1.0,
+    "tier1FuelMultiplier": 1.0,
+    "tier2Threshold": 0.85,
+    "tier2SpeedMultiplier": 0.95,
+    "tier2FuelMultiplier": 1.12,
+    "tier3SpeedMultiplier": 0.88,
+    "tier3FuelMultiplier": 1.28
+  },
+  "power": {
+    "minEfficiency": 0.35
+  },
+  "hook": {
+    "range": 760,
+    "flySpeed": 1100,
+    "basePullSpeed": 650,
+    "weightPullPenalty": 15,
+    "minPullSpeed": 260,
+    "hookRadius": 18,
+    "snapDistance": 90,
+    "snapDuration": 0.25,
+    "decisionWindowDuration": 1.0,
+    "hitStopDuration": 60
+  },
+  "depth": {
+    "far": { "minY": 330, "maxY": 420, "minScale": 0.82, "maxScale": 0.88, "depth": 10 },
+    "mid": { "minY": 420, "maxY": 530, "minScale": 0.88, "maxScale": 0.96, "depth": 20 },
+    "near": { "minY": 530, "maxY": 640, "minScale": 0.96, "maxScale": 1.05, "depth": 30 },
+    "trackY": 710,
+    "trainDepth": 25
+  },
+  "score": {
+    "base": 100,
+    "hpMultiplier": 0.5,
+    "fuelMultiplier": 0.5
+  }
+}

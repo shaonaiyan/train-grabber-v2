@@ -1,0 +1,92 @@
+{
+  "windowDurationMin": 3.2,
+  "windowDurationMax": 4.5,
+  "windowCooldownMin": 0.7,
+  "windowCooldownMax": 1.5,
+  "groups": {
+    "A": {
+      "id": "A",
+      "name": "Basic Survival",
+      "items": ["fuel", "parts", "junk"],
+      "tags": ["survival", "repair"],
+      "phaseWeight": { "0": 10, "1": 5, "2": 8, "3": 4, "4": 5, "5": 2 }
+    },
+    "B": {
+      "id": "B",
+      "name": "Combat Temptation",
+      "items": ["turret", "battery", "gold"],
+      "tags": ["combat", "power", "greed"],
+      "phaseWeight": { "0": 0, "1": 10, "2": 2, "3": 5, "4": 8, "5": 1 }
+    },
+    "C": {
+      "id": "C",
+      "name": "Space Conflict",
+      "items": ["flat_car", "gold", "survivor"],
+      "tags": ["space", "greed", "crew"],
+      "phaseWeight": { "0": 0, "1": 6, "2": 6, "3": 7, "4": 4, "5": 1 }
+    },
+    "D": {
+      "id": "D",
+      "name": "Pure Greed",
+      "items": ["gold", "sheep", "fuel"],
+      "tags": ["greed", "fuel"],
+      "phaseWeight": { "0": 0, "1": 4, "2": 7, "3": 9, "4": 3, "5": 5 }
+    },
+    "E": {
+      "id": "E",
+      "name": "Unknown Risk",
+      "items": ["fridge", "egg", "parts"],
+      "tags": ["mystery", "gamble"],
+      "phaseWeight": { "0": 0, "1": 0, "2": 2, "3": 7, "4": 8, "5": 1 }
+    },
+    "F": {
+      "id": "F",
+      "name": "Firepower Expansion",
+      "items": ["turret", "battery", "flat_car"],
+      "tags": ["combat", "space", "power"],
+      "phaseWeight": { "0": 0, "1": 8, "2": 2, "3": 4, "4": 7, "5": 1 }
+    },
+    "G": {
+      "id": "G",
+      "name": "Lifesaver",
+      "items": ["fuel", "parts", "survivor"],
+      "tags": ["survival", "crew"],
+      "phaseWeight": { "0": 0, "1": 4, "2": 8, "3": 6, "4": 7, "5": 3 }
+    },
+    "H": {
+      "id": "H",
+      "name": "Luxury Choice",
+      "items": ["gold", "sheep", "fridge"],
+      "tags": ["greed", "luxury"],
+      "phaseWeight": { "0": 0, "1": 0, "2": 4, "3": 10, "4": 2, "5": 1 }
+    },
+    "I": {
+      "id": "I",
+      "name": "Dangerous Tool",
+      "items": ["explosive", "turret", "fuel"],
+      "tags": ["hazard", "combat"],
+      "phaseWeight": { "0": 0, "1": 0, "2": 3, "3": 4, "4": 9, "5": 2 }
+    },
+    "J": {
+      "id": "J",
+      "name": "Load Pressure",
+      "items": ["gold", "flat_car", "junk"],
+      "tags": ["load", "space", "junk"],
+      "phaseWeight": { "0": 0, "1": 5, "2": 5, "3": 5, "4": 3, "5": 1 }
+    },
+    "K": {
+      "id": "K",
+      "name": "Development Route",
+      "items": ["battery", "survivor", "sheep"],
+      "tags": ["power", "crew", "score"],
+      "phaseWeight": { "0": 0, "1": 3, "2": 5, "3": 8, "4": 4, "5": 1 }
+    },
+    "L": {
+      "id": "L",
+      "name": "Temptation of the Unknown",
+      "items": ["egg", "fridge", "gold"],
+      "tags": ["mystery", "greed"],
+      "phaseWeight": { "0": 0, "1": 0, "2": 2, "3": 8, "4": 8, "5": 1 }
+    }
+  }
+}
