@@ -17,6 +17,7 @@ export class TelemetryManager {
   private seed: string;
   private startTime: number;
   private endTime: number = 0;
+  private currentRunTimeSec: number = 0;
   private finalScore: number = 0;
   private outcome: 'WIN' | 'FAIL_HP' | 'FAIL_FUEL' | 'FORCED' = 'WIN';
 
@@ -30,6 +31,7 @@ export class TelemetryManager {
   private timelineTimer: number = 0;
   private trainManager: TrainManager | null = null;
   private currentPhaseName: string = 'Tutorial';
+  private boundListeners: Array<{ event: string; fn: (...args: any[]) => void }> = [];
 
   public static getInstance(): TelemetryManager {
     if (!TelemetryManager.instance) {
@@ -42,14 +44,18 @@ export class TelemetryManager {
     this.seed = Date.now().toString();
     this.startTime = Date.now();
     this.itemStats = this.initItemStats();
-    this.setupEventListeners();
+    this.bindEventListeners();
   }
 
   public init(seed: string | number, trainManager: TrainManager): void {
+    this.unbindEventListeners();
+    this.bindEventListeners();
+
     this.seed = seed.toString();
     this.trainManager = trainManager;
     this.startTime = Date.now();
     this.endTime = 0;
+    this.currentRunTimeSec = 0;
     this.finalScore = 0;
     this.outcome = 'WIN';
 
@@ -60,6 +66,14 @@ export class TelemetryManager {
     this.timeline = [];
     this.events = [];
     this.timelineTimer = 0;
+  }
+
+  public setRunTime(timeSec: number): void {
+    this.currentRunTimeSec = timeSec;
+  }
+
+  public getRunTime(): number {
+    return this.currentRunTimeSec;
   }
 
   private initItemStats(): Record<ItemId, ItemStatsRecord> {
@@ -74,48 +88,86 @@ export class TelemetryManager {
     return map;
   }
 
-  private setupEventListeners(): void {
+  private addListener(event: string, fn: (...args: any[]) => void): void {
     const bus = EventBus.getInstance();
+    bus.on(event, fn);
+    this.boundListeners.push({ event, fn });
+  }
 
-    bus.on('ITEM_SEEN', (d: { item: ItemId }) => {
+  private unbindEventListeners(): void {
+    const bus = EventBus.getInstance();
+    for (const { event, fn } of this.boundListeners) {
+      bus.off(event, fn);
+    }
+    this.boundListeners = [];
+  }
+
+  private bindEventListeners(): void {
+    this.addListener('ITEM_SEEN', (d: { item: ItemId }) => {
       if (this.itemStats[d.item]) this.itemStats[d.item].seen++;
       this.recordEvent('ITEM_SEEN', d);
     });
 
-    bus.on('GRAPPLE_FIRE', (d: any) => this.recordEvent('GRAPPLE_FIRE', d));
-    bus.on('GRAPPLE_HIT', (d: { item: ItemId }) => {
+    this.addListener('GRAPPLE_FIRE', (d: any) => this.recordEvent('GRAPPLE_FIRE', d));
+    this.addListener('GRAPPLE_HIT', (d: { item: ItemId }) => {
       if (this.itemStats[d.item]) this.itemStats[d.item].attempted++;
       this.recordEvent('GRAPPLE_HIT', d);
     });
-    bus.on('GRAPPLE_MISS', (d: any) => this.recordEvent('GRAPPLE_MISS', d));
+    this.addListener('GRAPPLE_MISS', (d: any) => this.recordEvent('GRAPPLE_MISS', d));
 
-    bus.on('ITEM_DELIVERED', (d: { item: ItemId }) => {
+    this.addListener('ITEM_DELIVERED', (d: { item: ItemId; instanceId?: string; windowId?: string; spawnPhaseId?: number }) => {
       if (this.itemStats[d.item]) this.itemStats[d.item].grabbed++;
       this.recordEvent('ITEM_DELIVERED', d);
 
       // Section 93: Condition Value Snapshot
       if (this.trainManager) {
         this.grabSnapshots.push({
-          time: (Date.now() - this.startTime) * 0.001,
+          time: parseFloat(this.currentRunTimeSec.toFixed(2)),
           item: d.item,
+          instanceId: d.instanceId,
+          windowId: d.windowId,
+          spawnPhaseId: d.spawnPhaseId,
           fuel: this.trainManager.stats.fuel,
+          hp: this.trainManager.stats.hp,
           load: this.trainManager.load.getCurrentLoad(),
           maxLoad: this.trainManager.load.getMaxLoad(),
           powerSupply: this.trainManager.power.getSupply(),
           powerDemand: this.trainManager.power.getDemand(),
+          cargoValue: this.trainManager.getCargoValue(),
           slotAvailability: this.trainManager.getAvailableSlotCount(),
           phase: this.currentPhaseName,
         });
       }
     });
 
-    bus.on('ITEM_REJECTED', (d: any) => this.recordEvent('ITEM_REJECTED', d));
+    this.addListener('ITEM_REJECTED', (d: any) => this.recordEvent('ITEM_REJECTED', d));
 
-    bus.on('ITEM_DISCARDED', (d: { item: ItemId; time: number; reasonContext: any }) => {
-      if (this.itemStats[d.item]) this.itemStats[d.item].discarded++;
+    this.addListener('ITEM_DISCARDED', (d: {
+      item: ItemId;
+      discardedItem?: ItemId;
+      time?: number;
+      loadBefore?: number;
+      loadAfter?: number;
+      cargoBefore?: number;
+      cargoAfter?: number;
+      powerBefore?: number;
+      powerAfter?: number;
+      currentWindowId?: string;
+      reasonContext?: any;
+    }) => {
+      const discItem = d.discardedItem || d.item;
+      if (this.itemStats[discItem]) this.itemStats[discItem].discarded++;
       this.discards.push({
-        time: d.time,
-        item: d.item,
+        time: d.time ?? parseFloat(this.currentRunTimeSec.toFixed(2)),
+        item: discItem,
+        discardedItem: discItem,
+        loadBefore: d.loadBefore,
+        loadAfter: d.loadAfter,
+        cargoBefore: d.cargoBefore,
+        cargoAfter: d.cargoAfter,
+        powerBefore: d.powerBefore,
+        powerAfter: d.powerAfter,
+        currentWindowId: d.currentWindowId,
         reasonContext: {
           ...d.reasonContext,
           phase: this.currentPhaseName,
@@ -124,22 +176,22 @@ export class TelemetryManager {
       this.recordEvent('ITEM_DISCARDED', d);
     });
 
-    bus.on('CAR_ATTACHED', (d: any) => this.recordEvent('CAR_ATTACHED', d));
-    bus.on('POWER_SHORTAGE_START', (d: any) => this.recordEvent('POWER_SHORTAGE_START', d));
-    bus.on('POWER_SHORTAGE_END', (d: any) => this.recordEvent('POWER_SHORTAGE_END', d));
-    bus.on('HEAVY_TRAIN_START', (d: any) => this.recordEvent('HEAVY_TRAIN_START', d));
-    bus.on('HEAVY_TRAIN_END', (d: any) => this.recordEvent('HEAVY_TRAIN_END', d));
-    bus.on('ENEMY_SPAWN', (d: any) => this.recordEvent('ENEMY_SPAWN', d));
-    bus.on('ENEMY_KILLED', (d: any) => this.recordEvent('ENEMY_KILLED', d));
-    bus.on('TRAIN_DAMAGE', (d: any) => this.recordEvent('TRAIN_DAMAGE', d));
-    bus.on('FRIDGE_OPEN', (d: any) => this.recordEvent('FRIDGE_OPEN', d));
-    bus.on('EGG_HATCH', (d: any) => this.recordEvent('EGG_HATCH', d));
-    bus.on('PHASE_CHANGE', (d: any) => {
+    this.addListener('CAR_ATTACHED', (d: any) => this.recordEvent('CAR_ATTACHED', d));
+    this.addListener('POWER_SHORTAGE_START', (d: any) => this.recordEvent('POWER_SHORTAGE_START', d));
+    this.addListener('POWER_SHORTAGE_END', (d: any) => this.recordEvent('POWER_SHORTAGE_END', d));
+    this.addListener('HEAVY_TRAIN_START', (d: any) => this.recordEvent('HEAVY_TRAIN_START', d));
+    this.addListener('HEAVY_TRAIN_END', (d: any) => this.recordEvent('HEAVY_TRAIN_END', d));
+    this.addListener('ENEMY_SPAWN', (d: any) => this.recordEvent('ENEMY_SPAWN', d));
+    this.addListener('ENEMY_KILLED', (d: any) => this.recordEvent('ENEMY_KILLED', d));
+    this.addListener('TRAIN_DAMAGE', (d: any) => this.recordEvent('TRAIN_DAMAGE', d));
+    this.addListener('FRIDGE_OPEN', (d: any) => this.recordEvent('FRIDGE_OPEN', d));
+    this.addListener('EGG_HATCH', (d: any) => this.recordEvent('EGG_HATCH', d));
+    this.addListener('PHASE_CHANGE', (d: any) => {
       this.currentPhaseName = d.name;
       this.recordEvent('PHASE_CHANGE', d);
     });
-    bus.on('WINDOW_START', (d: any) => this.recordEvent('WINDOW_START', d));
-    bus.on('WINDOW_END', (d: { record: WindowChoiceRecord }) => {
+    this.addListener('WINDOW_START', (d: any) => this.recordEvent('WINDOW_START', d));
+    this.addListener('WINDOW_END', (d: { record: WindowChoiceRecord }) => {
       this.windows.push(d.record);
       for (const ign of d.record.itemsIgnored) {
         if (this.itemStats[ign]) this.itemStats[ign].ignored++;
@@ -150,7 +202,7 @@ export class TelemetryManager {
 
   public recordEvent(event: string, data?: any): void {
     this.events.push({
-      time: parseFloat(((Date.now() - this.startTime) * 0.001).toFixed(2)),
+      time: parseFloat(this.currentRunTimeSec.toFixed(2)),
       event,
       data,
     });
@@ -164,9 +216,8 @@ export class TelemetryManager {
     // Section 96: Snapshot every 5 seconds
     if (this.timelineTimer >= 5.0) {
       this.timelineTimer = 0;
-      const t = parseFloat(((Date.now() - this.startTime) * 0.001).toFixed(1));
       this.timeline.push({
-        time: t,
+        time: parseFloat(this.currentRunTimeSec.toFixed(1)),
         hp: Math.ceil(this.trainManager.stats.hp),
         fuel: Math.ceil(this.trainManager.stats.fuel),
         load: this.trainManager.load.getCurrentLoad(),
@@ -174,6 +225,7 @@ export class TelemetryManager {
         powerSupply: this.trainManager.power.getSupply(),
         powerDemand: this.trainManager.power.getDemand(),
         scorePotential: this.calculateCurrentScore(),
+        cargoValue: this.trainManager.getCargoValue(),
         cars: this.trainManager.getCarCount(),
         enemies: enemyCount,
       });
@@ -225,8 +277,9 @@ export class TelemetryManager {
       seed: this.seed,
       startTime: this.startTime,
       endTime: this.endTime || Date.now(),
-      durationSeconds: parseFloat((( (this.endTime || Date.now()) - this.startTime) * 0.001).toFixed(1)),
+      durationSeconds: parseFloat(this.currentRunTimeSec.toFixed(1)),
       finalScore: this.finalScore || this.calculateCurrentScore(),
+      cargoValue: this.trainManager ? this.trainManager.getCargoValue() : 0,
       outcome: this.outcome,
       windows: this.windows,
       itemStats: this.itemStats,

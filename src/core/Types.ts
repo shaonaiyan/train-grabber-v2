@@ -48,6 +48,11 @@ export interface ItemData {
   trainDamage?: number;
   canDiscard?: boolean;
   description: string;
+  instanceId?: string;
+  windowId?: string;
+  spawnPhaseId?: number;
+  outcomeSeed?: number;
+  fromTradeLine?: boolean;
 }
 
 export type DepthBand = 'far' | 'mid' | 'near';
@@ -134,7 +139,7 @@ export interface InstalledModule {
   installedTime: number;
   fromTradeLine?: boolean;
   stateTimer?: number;
-  isProcessed?: boolean; // For fridge or egg
+  isProcessed?: boolean;
   customData?: Record<string, any>;
 }
 
@@ -146,7 +151,10 @@ export interface TelemetryEventRecord {
 
 export interface WindowChoiceRecord {
   windowId: string;
+  groupId?: string;
   spawnTime: number;
+  decisionStartTime?: number;
+  decisionEndTime?: number;
   endTime: number;
   itemsPresented: ItemId[];
   trainStateAtSpawn: {
@@ -177,7 +185,15 @@ export interface ItemStatsRecord {
 export interface DiscardRecord {
   time: number;
   item: ItemId;
-  reasonContext: {
+  discardedItem?: ItemId;
+  loadBefore?: number;
+  loadAfter?: number;
+  cargoBefore?: number;
+  cargoAfter?: number;
+  powerBefore?: number;
+  powerAfter?: number;
+  currentWindowId?: string;
+  reasonContext?: {
     currentLoad: number;
     maxLoad: number;
     fuel: number;
@@ -197,6 +213,7 @@ export interface TimelineSnapshot {
   powerSupply: number;
   powerDemand: number;
   scorePotential: number;
+  cargoValue?: number;
   cars: number;
   enemies: number;
 }
@@ -207,17 +224,23 @@ export interface RunTelemetryData {
   endTime: number;
   durationSeconds: number;
   finalScore: number;
+  cargoValue?: number;
   outcome: 'WIN' | 'FAIL_HP' | 'FAIL_FUEL' | 'FORCED';
   windows: WindowChoiceRecord[];
   itemStats: Record<ItemId, ItemStatsRecord>;
   grabSnapshots: Array<{
     time: number;
     item: ItemId;
+    instanceId?: string;
+    windowId?: string;
+    spawnPhaseId?: number;
     fuel: number;
+    hp?: number;
     load: number;
     maxLoad: number;
     powerSupply: number;
     powerDemand: number;
+    cargoValue?: number;
     slotAvailability: Record<SlotType, number>;
     phase: string;
   }>;

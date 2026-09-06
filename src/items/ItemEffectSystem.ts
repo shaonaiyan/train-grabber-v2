@@ -79,7 +79,11 @@ export class ItemEffectSystem {
   }
 
   private resolveFridge(mod: any): void {
-    const roll = this.rng.nextFloat(); // 0 to 1
+    // Section 30: Deterministic outcome based on unique outcomeSeed
+    const itemSeed = mod.data?.outcomeSeed || 42;
+    const mysteryRng = new SeededRandom(itemSeed);
+    const roll = mysteryRng.nextFloat(); // 0 to 1
+
     if (roll < 0.40) {
       // 40% Food: Finish score +80, fridge remains
       mod.customData = { outcome: 'FOOD', bonusScore: 80 };
@@ -104,7 +108,11 @@ export class ItemEffectSystem {
   }
 
   private resolveEgg(mod: any): void {
-    const roll = this.rng.nextFloat();
+    // Section 30: Deterministic outcome based on unique outcomeSeed
+    const itemSeed = (mod.data?.outcomeSeed || 88) + 1337;
+    const mysteryRng = new SeededRandom(itemSeed);
+    const roll = mysteryRng.nextFloat();
+
     if (roll < 0.60) {
       // 60% Friendly Creature: attacks nearest enemy every 0.9s for 4 dmg, stays on car
       mod.customData = { outcome: 'FRIENDLY', isCreature: true, attackTimer: 0 };

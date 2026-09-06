@@ -18,14 +18,23 @@ export class OpportunityDirector {
   private depthManager: DepthManager;
   private eventBus: EventBus;
 
-  private groups: Record<string, OpportunityGroup>;
+  public groups: Record<string, OpportunityGroup>;
   private activeWindows: OpportunityWindow[] = [];
   private completedRecords: WindowChoiceRecord[] = [];
 
-  private nextWindowTimer: number = 2.5;
+  private nextWindowTimer: number = 0;
   private windowCounter: number = 0;
   private lastGroupId: string = '';
   private spawnedFixedTimes: Set<number> = new Set();
+  private hasSpawnedTutorialBandit: boolean = false;
+
+  // Section 27-28: Adaptive Director Context Multipliers (Default OFF)
+  public isAdaptiveEnabled: boolean = false;
+  public isWorldLocked: boolean = true;
+
+  // Interaction Zone metrics (Section 20)
+  public interactionEnterX: number = 1150;
+  public interactionExitX: number = 290;
 
   constructor(
     scene: Phaser.Scene,
@@ -41,16 +50,12 @@ export class OpportunityDirector {
     this.eventBus = EventBus.getInstance();
     this.groups = OpportunityConfigLoader.getGroups();
 
-    // Listen for hook events to track player decisions for telemetry
-    this.eventBus.on('GRAPPLE_FIRE', () => {
-      // Find closest active item to crosshair / hook path
-      const hookLatched = this.trainManager; // checked via item events
-    });
+    // Hook decision listeners for telemetry
     this.eventBus.on('GRAPPLE_HIT', (data: { item: ItemId }) => {
       const activeWin = this.getActiveWindow();
       if (activeWin) {
-        const time = this.scene.time.now * 0.001;
-        activeWin.recordAttempt(data.item, time);
+        const runTime = (this.scene as any).runTimeSec || 0;
+        activeWin.recordAttempt(data.item, runTime);
       }
     });
     this.eventBus.on('ITEM_DELIVERED', (data: { item: ItemId }) => {
@@ -61,58 +66,87 @@ export class OpportunityDirector {
     });
   }
 
-  public update(time: number, delta: number, currentPhaseId: number, allWorldItems: WorldItem[]): void {
-    const currentTimeSec = time * 0.001;
-    const dt = delta * 0.001;
+  public update(
+    runTimeSec: number,
+    scaledDelta: number,
+    currentPhaseId: number,
+    allWorldItems: WorldItem[],
+    worldSpeed: number
+  ): void {
+    const dt = scaledDelta * 0.001;
 
-    // 1. Check fixed windows in Phase 0 or Final Stretch (Sections 59, 72)
-    this.checkFixedWindows(currentTimeSec, currentPhaseId, allWorldItems);
+    // Dynamic Interaction Zone calculation (Section 20)
+    const cranePos = this.trainManager.getCranePosition();
+    this.interactionEnterX = cranePos.x + 760 - 80;
+    this.interactionExitX = cranePos.x - 180;
+
+    // 1. Check fixed windows in Phase 0 (Tutorial) and Final Stretch (Section 32, 72)
+    this.checkFixedWindows(runTimeSec, currentPhaseId, allWorldItems, worldSpeed);
+
+    // Special 34s Tutorial Bandit Spawn (Section 32)
+    if (runTimeSec >= 34 && !this.hasSpawnedTutorialBandit && currentPhaseId === 0) {
+      this.hasSpawnedTutorialBandit = true;
+      this.eventBus.emit('SPAWN_TUTORIAL_BANDIT');
+    }
 
     // 2. Update active windows
     for (let i = this.activeWindows.length - 1; i >= 0; i--) {
       const win = this.activeWindows[i];
-      if (win.update(currentTimeSec)) {
-        this.completedRecords.push(win.finishWindow(currentTimeSec));
+      if (win.update(runTimeSec, this.interactionEnterX, this.interactionExitX)) {
+        // Section 23: finishWindow called exactly once by Director
+        const record = win.finishWindow(runTimeSec);
+        this.completedRecords.push(record);
         this.activeWindows.splice(i, 1);
+
+        // Section 24: Cooldown 0.75 ~ 1.20s between windows
+        this.nextWindowTimer = this.rng.range(0.75, 1.20);
       }
     }
 
-    // 3. If in normal dynamic phases (or between fixed windows), spawn dynamic windows
-    if (this.activeWindows.length === 0) {
+    // 3. Spawning dynamic windows outside Phase 0 and Phase 5
+    if (this.activeWindows.length === 0 && currentPhaseId !== 0 && currentPhaseId !== 5) {
       this.nextWindowTimer -= dt;
       if (this.nextWindowTimer <= 0) {
-        // Do not spawn dynamic windows in Phase 0 (it only uses fixed ones)
-        if (currentPhaseId !== 0 && currentPhaseId !== 5) {
-          this.spawnDynamicWindow(currentTimeSec, currentPhaseId, allWorldItems);
-        }
+        this.spawnDynamicWindow(runTimeSec, currentPhaseId, allWorldItems, worldSpeed);
       }
     }
   }
 
-  private checkFixedWindows(currentTimeSec: number, currentPhaseId: number, allWorldItems: WorldItem[]): void {
+  private checkFixedWindows(
+    runTimeSec: number,
+    currentPhaseId: number,
+    allWorldItems: WorldItem[],
+    worldSpeed: number
+  ): void {
     const phaseConfig = phasesData.phases[currentPhaseId];
     if (!phaseConfig || !phaseConfig.fixedWindows) return;
 
     for (const fw of phaseConfig.fixedWindows) {
-      if (currentTimeSec >= fw.time && !this.spawnedFixedTimes.has(fw.time)) {
+      if (runTimeSec >= fw.time && !this.spawnedFixedTimes.has(fw.time)) {
         this.spawnedFixedTimes.add(fw.time);
         this.spawnWindowWithItems(
           `fixed_${fw.time}`,
           'FIXED',
           'Preset Window',
           fw.items as ItemId[],
-          currentTimeSec,
+          runTimeSec,
           3.8,
-          allWorldItems
+          allWorldItems,
+          currentPhaseId,
+          worldSpeed
         );
       }
     }
   }
 
-  private spawnDynamicWindow(currentTimeSec: number, phaseId: number, allWorldItems: WorldItem[]): void {
+  private spawnDynamicWindow(
+    runTimeSec: number,
+    phaseId: number,
+    allWorldItems: WorldItem[],
+    worldSpeed: number
+  ): void {
     const selectedGroup = this.selectGroupForContext(phaseId);
-    const [dMin, dMax] = OpportunityConfigLoader.getWindowDurationRange();
-    const duration = this.rng.range(dMin, dMax);
+    const duration = this.rng.range(3.2, 4.2);
 
     this.windowCounter++;
     const windowId = `win_${this.windowCounter}_${selectedGroup.id}`;
@@ -122,13 +156,12 @@ export class OpportunityDirector {
       selectedGroup.id,
       selectedGroup.name,
       selectedGroup.items,
-      currentTimeSec,
+      runTimeSec,
       duration,
-      allWorldItems
+      allWorldItems,
+      phaseId,
+      worldSpeed
     );
-
-    const [cdMin, cdMax] = OpportunityConfigLoader.getWindowCooldownRange();
-    this.nextWindowTimer = duration + this.rng.range(cdMin, cdMax);
   }
 
   public spawnWindowWithItems(
@@ -136,31 +169,47 @@ export class OpportunityDirector {
     groupId: string,
     groupName: string,
     itemIds: ItemId[],
-    currentTimeSec: number,
+    runTimeSec: number,
     duration: number,
-    allWorldItems: WorldItem[]
+    allWorldItems: WorldItem[],
+    phaseId: number = 0,
+    worldSpeed: number = 160
   ): OpportunityWindow {
     const win = new OpportunityWindow(
       windowId,
       groupId,
       groupName,
-      currentTimeSec,
+      runTimeSec,
       duration,
       itemIds,
       this.trainManager
     );
 
-    // Layout items across different depths (Section 34)
+    // Section 25-26: Pre-spawn items just outside interaction zone so they enter 0.3s after cooldown
+    const leadDistance = Math.max(80, worldSpeed * 0.35);
+    const baseSpawnX = Math.max(1400, this.interactionEnterX + leadDistance);
+
     const bands: DepthBand[] = ['far', 'mid', 'near'];
     const shuffledBands = this.rng.shuffle(bands);
 
-    let startX = 2000;
     for (let i = 0; i < itemIds.length; i++) {
       const band = shuffledBands[i % shuffledBands.length];
       const y = this.depthManager.getRandomYInBand(band, () => this.rng.nextFloat());
-      const itemX = startX + i * this.rng.range(90, 150);
+      // Section 26: Staggered horizontally by 80~120px
+      const itemX = baseSpawnX + i * this.rng.range(80, 120);
 
-      const worldItem = this.itemFactory.spawnWorldItem(itemX, y, itemIds[i], band);
+      // Section 30: Deterministic outcome seed for mystery items
+      const outcomeSeed = (this.rng.getSeed() + this.windowCounter * 17 + i * 31) % 999983;
+
+      const worldItem = this.itemFactory.spawnWorldItem(
+        itemX,
+        y,
+        itemIds[i],
+        band,
+        windowId,
+        phaseId,
+        outcomeSeed
+      );
       allWorldItems.push(worldItem);
       win.activeWorldItems.push(worldItem);
     }
@@ -181,20 +230,21 @@ export class OpportunityDirector {
       let weight = g.phaseWeight[phaseId.toString()] || 0;
       if (weight <= 0) continue;
 
-      // Penalize repeat
       if (g.id === this.lastGroupId) {
         weight *= 0.3;
       }
 
-      // Context modifiers (Section 32)
-      if (isLowFuel && g.items.includes('fuel')) {
-        weight *= 2.5;
-      }
-      if (hasPowerShortage && g.items.includes('battery')) {
-        weight *= 3.0;
-      }
-      if (isHeavy && g.items.includes('flat_car')) {
-        weight *= 2.0;
+      // Section 27-28: Context multipliers ONLY active when isAdaptiveEnabled is true
+      if (this.isAdaptiveEnabled) {
+        if (isLowFuel && g.items.includes('fuel')) {
+          weight *= 2.5;
+        }
+        if (hasPowerShortage && g.items.includes('battery')) {
+          weight *= 3.0;
+        }
+        if (isHeavy && g.items.includes('flat_car')) {
+          weight *= 2.0;
+        }
       }
 
       candidates.push({ group: g, weight });
@@ -204,7 +254,6 @@ export class OpportunityDirector {
       return this.groups['A'];
     }
 
-    // Weighted roll
     const totalWeight = candidates.reduce((sum, c) => sum + c.weight, 0);
     let roll = this.rng.nextFloat() * totalWeight;
 

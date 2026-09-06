@@ -22,27 +22,27 @@ export class DepthManager {
     const { far, mid, near } = balanceData.depth;
 
     if (y <= far.maxY) {
-      // Far band
+      // Far band: 485 ~ 535
       const t = Phaser.Math.Clamp((y - far.minY) / (far.maxY - far.minY), 0, 1);
       const scale = far.minScale + t * (far.maxScale - far.minScale);
       return {
         scale,
         depth: far.depth + t * 5,
-        shadowYOffset: 12 * scale,
-        shadowScale: scale * 0.9,
+        shadowYOffset: 14 * scale,
+        shadowScale: scale * 0.92,
       };
     } else if (y <= mid.maxY) {
-      // Mid band
+      // Mid band: 535 ~ 595
       const t = Phaser.Math.Clamp((y - mid.minY) / (mid.maxY - mid.minY), 0, 1);
       const scale = mid.minScale + t * (mid.maxScale - mid.minScale);
       return {
         scale,
         depth: mid.depth + t * 5,
-        shadowYOffset: 15 * scale,
-        shadowScale: scale * 0.95,
+        shadowYOffset: 16 * scale,
+        shadowScale: scale * 0.96,
       };
     } else {
-      // Near band
+      // Near band: 595 ~ 655
       const t = Phaser.Math.Clamp((y - near.minY) / (near.maxY - near.minY), 0, 1);
       const scale = near.minScale + t * (near.maxScale - near.minScale);
       return {

@@ -296,4 +296,31 @@ export class AudioManager {
     osc.start(t);
     osc.stop(t + 0.25);
   }
+
+  public playTrainWhistle(): void {
+    this.initContext();
+    if (this.isMuted || !this.ctx) return;
+    try {
+      const t = this.ctx.currentTime;
+      [440, 554].forEach((freq) => {
+        const osc = this.ctx!.createOscillator();
+        const gain = this.ctx!.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(freq, t);
+        osc.frequency.linearRampToValueAtTime(freq * 1.02, t + 0.6);
+        osc.frequency.linearRampToValueAtTime(freq * 0.98, t + 1.2);
+
+        gain.gain.setValueAtTime(0, t);
+        gain.gain.linearRampToValueAtTime(0.12, t + 0.1);
+        gain.gain.setValueAtTime(0.12, t + 0.9);
+        gain.gain.exponentialRampToValueAtTime(0.001, t + 1.3);
+
+        osc.connect(gain);
+        gain.connect(this.ctx!.destination);
+        osc.start(t);
+        osc.stop(t + 1.3);
+      });
+    } catch (_) {}
+  }
 }
+

@@ -20,14 +20,14 @@ export class ResultScene extends Phaser.Scene {
 
     // Dark semi-transparent result overlay panel
     const bg = this.add.graphics();
-    bg.fillStyle(0x0a0d14, 0.92);
-    bg.fillRoundedRect(360, 80, 1200, 920, 16);
+    bg.fillStyle(0x0a0d14, 0.94);
+    bg.fillRoundedRect(340, 60, 1240, 940, 16);
     bg.lineStyle(3, fullData.outcome === 'WIN' ? 0x00ffcc : 0xe74c3c, 1);
-    bg.strokeRoundedRect(360, 80, 1200, 920, 16);
+    bg.strokeRoundedRect(340, 60, 1240, 940, 16);
 
     // Title
     const titleText = fullData.outcome === 'WIN' ? 'RUN COMPLETE: HAVEN REACHED' : 'TRAIN ABANDONED IN WASTELAND';
-    const title = this.add.text(960, 140, titleText, {
+    const title = this.add.text(960, 120, titleText, {
       fontFamily: 'Arial',
       fontSize: '38px',
       fontStyle: 'bold',
@@ -40,7 +40,7 @@ export class ResultScene extends Phaser.Scene {
     // Seed & Duration subtitle
     const sub = this.add.text(
       960,
-      195,
+      175,
       `SEED: ${fullData.seed}   |   DURATION: ${fullData.durationSeconds}s   |   OUTCOME: ${fullData.outcome}`,
       {
         fontFamily: 'Consolas, monospace',
@@ -50,10 +50,10 @@ export class ResultScene extends Phaser.Scene {
     );
     sub.setOrigin(0.5);
 
-    // Main Score Display
-    const scoreVal = this.add.text(960, 270, `FINAL SCORE: ${fullData.finalScore}`, {
+    // Main Score & Cargo Value Display
+    const scoreVal = this.add.text(800, 245, `FINAL SCORE: ${fullData.finalScore}`, {
       fontFamily: 'Arial',
-      fontSize: '44px',
+      fontSize: '36px',
       fontStyle: 'bold',
       color: '#f1c40f',
       stroke: '#000000',
@@ -61,9 +61,20 @@ export class ResultScene extends Phaser.Scene {
     });
     scoreVal.setOrigin(0.5);
 
+    const cargoVal = this.add.text(1120, 245, `CARGO VALUE: $${fullData.cargoValue || 0}`, {
+      fontFamily: 'Arial',
+      fontSize: '36px',
+      fontStyle: 'bold',
+      color: '#00ffcc',
+      stroke: '#000000',
+      strokeThickness: 6,
+    });
+    cargoVal.setOrigin(0.5);
+
     // Detailed Stats Grid (Section 75)
     const stats = [
       { label: 'Train Length (Cars)', value: `${fullData.finalTrain.length} CARS` },
+      { label: 'Total Cargo Value', value: `$${fullData.cargoValue || 0}` },
       { label: 'Final Load Capacity', value: `${fullData.finalTrain.load} / ${fullData.finalTrain.maxLoad}` },
       { label: 'Power Supply / Demand', value: `${fullData.finalTrain.powerSupply} / ${fullData.finalTrain.powerDemand}` },
       { label: 'Gold Cargo Secured', value: `${fullData.finalTrain.goldCount}` },
@@ -74,27 +85,27 @@ export class ResultScene extends Phaser.Scene {
       { label: 'Items Discarded (Sacrifices)', value: `${fullData.finalTrain.discardCount}` },
     ];
 
-    let startY = 360;
+    let startY = 320;
     stats.forEach((item, index) => {
       const col = index % 2;
       const row = Math.floor(index / 2);
-      const x = col === 0 ? 460 : 1020;
-      const y = startY + row * 65;
+      const x = col === 0 ? 440 : 1000;
+      const y = startY + row * 62;
 
       const card = this.add.graphics();
       card.fillStyle(0x161f2c, 0.85);
-      card.fillRoundedRect(x, y, 440, 52, 6);
+      card.fillRoundedRect(x, y, 480, 50, 6);
       card.lineStyle(1.5, 0x2c3e50, 1);
-      card.strokeRoundedRect(x, y, 440, 52, 6);
+      card.strokeRoundedRect(x, y, 480, 50, 6);
 
-      const lbl = this.add.text(x + 20, y + 16, item.label, {
+      const lbl = this.add.text(x + 20, y + 15, item.label, {
         fontFamily: 'Arial',
-        fontSize: '16px',
+        fontSize: '15px',
         color: '#bdc3c7',
       });
-      const val = this.add.text(x + 420, y + 16, item.value, {
+      const val = this.add.text(x + 460, y + 15, item.value, {
         fontFamily: 'Consolas, monospace',
-        fontSize: '20px',
+        fontSize: '19px',
         fontStyle: 'bold',
         color: '#ffffff',
         align: 'right',
@@ -103,15 +114,15 @@ export class ResultScene extends Phaser.Scene {
     });
 
     // Three Interactive Action Buttons (Section 75)
-    this.createButton(620, 880, '🔄 RETRY SAME SEED', 0x2980b9, () => {
+    this.createButton(620, 890, '🔄 RETRY SAME SEED', 0x2980b9, () => {
       this.scene.start('GameScene', { seed: this.sameSeed });
     });
 
-    this.createButton(960, 880, '🚀 NEW RUN', 0x27ae60, () => {
+    this.createButton(960, 890, '🚀 NEW RUN', 0x27ae60, () => {
       this.scene.start('GameScene', { seed: Date.now() });
     });
 
-    this.createButton(1300, 880, '💾 EXPORT DATA (JSON)', 0xd35400, () => {
+    this.createButton(1300, 890, '💾 EXPORT DATA (JSON)', 0xd35400, () => {
       telemetry.exportDataToFile();
     });
   }

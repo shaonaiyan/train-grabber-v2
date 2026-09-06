@@ -38,14 +38,22 @@ export class GameScene extends Phaser.Scene {
   private debugPanel!: DebugPanel;
   private telemetry!: TelemetryManager;
 
-  // State
-  public currentTime: number = 0;
+  // Unified RunClock (Section 21)
+  public runTimeSec: number = 0;
+  public get currentTime(): number {
+    return this.runTimeSec;
+  }
+  public set currentTime(val: number) {
+    this.runTimeSec = val;
+  }
+
   public currentPhaseId: number = 0;
   private isStationArriving: boolean = false;
   private isGameOver: boolean = false;
   private allWorldItems: WorldItem[] = [];
   private isUserPaused: boolean = false;
   private pauseText: Phaser.GameObjects.Text | null = null;
+  private hasWhistled470: boolean = false;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -53,12 +61,13 @@ export class GameScene extends Phaser.Scene {
 
   public init(data: { seed?: number | string }): void {
     this.seed = data && data.seed !== undefined ? Number(data.seed) : Math.floor(Math.random() * 1000000);
-    this.currentTime = 0;
+    this.runTimeSec = 0;
     this.currentPhaseId = 0;
     this.isStationArriving = false;
     this.isGameOver = false;
     this.allWorldItems = [];
     this.isUserPaused = false;
+    this.hasWhistled470 = false;
   }
 
   public create(): void {
@@ -185,9 +194,9 @@ export class GameScene extends Phaser.Scene {
     this.telemetry.setRunOutcome('WIN');
 
     // Section 74: Show YOUR TRAIN showcase
-    const yourTrainText = this.add.text(960, 240, 'YOUR TRAIN', {
+    const yourTrainText = this.add.text(960, 220, 'YOUR TRAIN', {
       fontFamily: 'Arial',
-      fontSize: '52px',
+      fontSize: '56px',
       fontStyle: 'bold',
       color: '#00ffcc',
       stroke: '#000000',
@@ -196,16 +205,16 @@ export class GameScene extends Phaser.Scene {
     yourTrainText.setOrigin(0.5);
     yourTrainText.setDepth(350);
 
-    // Zoom out slightly to admire the whole train for 2.0s
+    // Zoom out smoothly to admire whole train for 2.5s
     this.tweens.add({
       targets: this.cameras.main,
-      zoom: 0.82,
-      duration: 1200,
+      zoom: 0.80,
+      duration: 1500,
       ease: 'Quad.easeOut',
     });
 
-    // After 2.2 seconds, slide in the Result UI
-    this.time.delayedCall(2200, () => {
+    // After 2.5 seconds, transition to ResultScene
+    this.time.delayedCall(2500, () => {
       this.scene.start('ResultScene', { seed: this.seed, telemetry: this.telemetry });
     });
   }
@@ -225,7 +234,15 @@ export class GameScene extends Phaser.Scene {
     const dt = scaledDelta * 0.001;
 
     if (!this.isGameOver) {
-      this.currentTime += dt;
+      this.runTimeSec += dt;
+    }
+
+    // 470s Haven Approach: Green Signal & Train Whistle (Section 73)
+    if (this.runTimeSec >= 470 && !this.hasWhistled470 && !this.isGameOver) {
+      this.hasWhistled470 = true;
+      this.audio.playTrainWhistle();
+      this.hud.showPhaseBanner('HAVEN APPROACHING - GREEN SIGNAL');
+      this.eventBus.emit('SIGNAL_HAVEN_APPROACH');
     }
 
     // 1. Check Phases (0 to 5, Section 56-73)
@@ -272,28 +289,29 @@ export class GameScene extends Phaser.Scene {
 
     // 7. Update Opportunities
     if (!this.isGameOver && !this.isStationArriving) {
-      this.director.update(time, scaledDelta, this.currentPhaseId, this.allWorldItems);
+      this.director.update(this.runTimeSec, scaledDelta, this.currentPhaseId, this.allWorldItems, worldSpeed);
     }
 
     // 8. Update Combat & Enemies
-    this.enemyManager.update(time, scaledDelta, this.currentPhaseId, worldSpeed);
+    this.enemyManager.update(this.runTimeSec, scaledDelta, this.currentPhaseId, worldSpeed);
 
     // 9. Update Installed Modules abilities
     this.itemEffectSystem.update(scaledDelta);
 
     // 10. Update HUD & Debug
     const phaseName = currentPhase ? currentPhase.name : 'Finished';
-    this.hud.update(this.currentTime, this.currentPhaseId, phaseName);
-    this.debugPanel.update(this.currentTime, this.currentPhaseId, phaseName);
+    this.hud.update(this.runTimeSec, this.currentPhaseId, phaseName);
+    this.debugPanel.update(this.runTimeSec, this.currentPhaseId, phaseName);
 
     // 11. Audio train rhythm
     this.audio.updateTrainRhythm(scaledDelta, worldSpeed / baseSpeed);
 
     // 12. Telemetry
+    this.telemetry.setRunTime(this.runTimeSec);
     this.telemetry.update(scaledDelta, this.enemyManager.enemies.length);
 
     // 13. Check 480s Arrival (Section 73)
-    if (this.currentTime >= phasesData.totalDuration && !this.isStationArriving && !this.isGameOver) {
+    if (this.runTimeSec >= phasesData.totalDuration && !this.isStationArriving && !this.isGameOver) {
       this.triggerWinSequence();
     }
   }
@@ -302,7 +320,7 @@ export class GameScene extends Phaser.Scene {
     const phases = phasesData.phases;
     for (let i = phases.length - 1; i >= 0; i--) {
       const p = phases[i];
-      if (this.currentTime >= p.startTime) {
+      if (this.runTimeSec >= p.startTime) {
         if (this.currentPhaseId !== p.id) {
           this.currentPhaseId = p.id;
           this.eventBus.emit('PHASE_CHANGE', {

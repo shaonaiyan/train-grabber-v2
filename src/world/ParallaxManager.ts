@@ -4,10 +4,17 @@ import { GAME_WIDTH, GAME_HEIGHT } from '../core/GameConfig';
 export class ParallaxManager {
   private scene: Phaser.Scene;
   private skyLayer!: Phaser.GameObjects.TileSprite;
+  private sunContainer!: Phaser.GameObjects.Container;
   private farMtsLayer!: Phaser.GameObjects.TileSprite;
   private midRuinsLayer!: Phaser.GameObjects.TileSprite;
   private nearGroundLayer!: Phaser.GameObjects.TileSprite;
   private trackLayer!: Phaser.GameObjects.TileSprite;
+
+  // Phase variation props
+  private phaseTintTarget: number = 0xffffff;
+  private currentPhaseTint: number = 0xffffff;
+  private finalStationSilhouette: Phaser.GameObjects.Container | null = null;
+  private greenSignalLight: Phaser.GameObjects.Graphics | null = null;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -16,7 +23,7 @@ export class ParallaxManager {
   }
 
   private generateTextures(): void {
-    // 1. Sky & Dunes
+    // 1. Sky & Dunes (Pure gradient, NO SUN! Section 7)
     if (!this.scene.textures.exists('bg_sky')) {
       const canvas = document.createElement('canvas');
       canvas.width = 512;
@@ -31,11 +38,9 @@ export class ParallaxManager {
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, 512, 1080);
 
-      // Pale sun glow
-      ctx.beginPath();
-      ctx.arc(256, 260, 90, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(255, 235, 200, 0.25)';
-      ctx.fill();
+      // Soft hazy cloud layer
+      ctx.fillStyle = 'rgba(235, 180, 140, 0.08)';
+      ctx.fillRect(0, 200, 512, 120);
 
       this.scene.textures.addCanvas('bg_sky', canvas);
     }
@@ -173,25 +178,115 @@ export class ParallaxManager {
     this.skyLayer.setOrigin(0, 0);
     this.skyLayer.setDepth(0);
 
+    // Section 7: SINGLE SUN GRAPHICS (Unique, fixed in distant sky, does NOT repeat)
+    this.sunContainer = this.scene.add.container(360, 230);
+    this.sunContainer.setDepth(1);
+
+    const sunGlow = this.scene.add.graphics();
+    // Outer corona
+    sunGlow.fillStyle(0xffe8a0, 0.12);
+    sunGlow.fillCircle(0, 0, 110);
+    // Mid glow
+    sunGlow.fillStyle(0xfff0b8, 0.25);
+    sunGlow.fillCircle(0, 0, 75);
+    // Brilliant core
+    sunGlow.fillStyle(0xfffcf0, 0.85);
+    sunGlow.fillCircle(0, 0, 42);
+    this.sunContainer.add(sunGlow);
+
     // Far Mesa Mountains (Y around 280)
     this.farMtsLayer = this.scene.add.tileSprite(0, 240, GAME_WIDTH, 360, 'bg_far_mts');
     this.farMtsLayer.setOrigin(0, 0);
     this.farMtsLayer.setDepth(2);
 
-    // Mid Ruins (Y around 330)
+    // Mid Ruins (Y around 320)
     this.midRuinsLayer = this.scene.add.tileSprite(0, 320, GAME_WIDTH, 300, 'bg_mid_ruins');
     this.midRuinsLayer.setOrigin(0, 0);
     this.midRuinsLayer.setDepth(5);
 
     // Near Ground (Y around 500 to bottom)
-    this.nearGroundLayer = this.scene.add.tileSprite(0, 520, GAME_WIDTH, 560, 'bg_near_ground');
+    this.nearGroundLayer = this.scene.add.tileSprite(0, 500, GAME_WIDTH, 580, 'bg_near_ground');
     this.nearGroundLayer.setOrigin(0, 0);
     this.nearGroundLayer.setDepth(8);
 
-    // Railway Track at Y ≈ 690 - 750
+    // Railway Track at Y ≈ 680 - 760
     this.trackLayer = this.scene.add.tileSprite(0, 680, GAME_WIDTH, 80, 'bg_track');
     this.trackLayer.setOrigin(0, 0);
     this.trackLayer.setDepth(24);
+  }
+
+  public setPhaseEnvironment(phaseId: number): void {
+    // Subtle environment tones per phase (Section 85-90)
+    switch (phaseId) {
+      case 0: // Tutorial
+        this.skyLayer.setTint(0xffffff);
+        this.farMtsLayer.setTint(0xffffff);
+        break;
+      case 1: // Bandit Territory: darker amber/brown, dusty
+        this.skyLayer.setTint(0xedd6c4);
+        this.farMtsLayer.setTint(0xdeb89b);
+        break;
+      case 2: // Dryland: bright, bleached, hot
+        this.skyLayer.setTint(0xffeedb);
+        this.farMtsLayer.setTint(0xf7d9ba);
+        break;
+      case 3: // Trade Line: slightly richer amber
+        this.skyLayer.setTint(0xffe8d6);
+        this.farMtsLayer.setTint(0xdebca0);
+        break;
+      case 4: // Hazard Zone: ominous reddish tinge
+        this.skyLayer.setTint(0xffb8a6);
+        this.farMtsLayer.setTint(0xd98675);
+        break;
+      case 5: // Final Stretch
+        this.skyLayer.setTint(0xffeacc);
+        this.farMtsLayer.setTint(0xdebca0);
+        this.spawnFinalStretchSilhouettes();
+        break;
+    }
+  }
+
+  public spawnFinalStretchSilhouettes(): void {
+    if (this.finalStationSilhouette) return;
+
+    // Distant Haven silhouettes (Section 92-93)
+    this.finalStationSilhouette = this.scene.add.container(2100, 360);
+    this.finalStationSilhouette.setDepth(3);
+
+    const g = this.scene.add.graphics();
+    g.fillStyle(0x3e2b24, 0.75);
+
+    // Huge distant Haven towers and dome
+    g.fillRect(0, -180, 45, 180);
+    g.fillRect(80, -220, 60, 220);
+    g.beginPath();
+    g.arc(110, -220, 35, Math.PI, 0);
+    g.fill();
+    g.fillRect(180, -140, 120, 140);
+    g.fillRect(340, -260, 35, 260); // Radio spire
+
+    this.finalStationSilhouette.add(g);
+  }
+
+  public triggerGreenStationSignal(): void {
+    if (this.greenSignalLight) return;
+    // Section 95: Station signal green lamp at 470s
+    this.greenSignalLight = this.scene.add.graphics();
+    this.greenSignalLight.setDepth(28);
+    this.greenSignalLight.setPosition(1800, 620);
+
+    // Pylon post
+    this.greenSignalLight.fillStyle(0x1a252f, 1);
+    this.greenSignalLight.fillRect(-4, -60, 8, 60);
+
+    // Lamp housing
+    this.greenSignalLight.fillRoundedRect(-12, -85, 24, 30, 4);
+
+    // Brilliant green lamp & halo
+    this.greenSignalLight.fillStyle(0x00ff88, 0.95);
+    this.greenSignalLight.fillCircle(0, -70, 7);
+    this.greenSignalLight.fillStyle(0x00ff88, 0.25);
+    this.greenSignalLight.fillCircle(0, -70, 22);
   }
 
   public update(deltaSeconds: number, speed: number): void {
@@ -201,5 +296,13 @@ export class ParallaxManager {
     this.midRuinsLayer.tilePositionX += shift * 0.28;
     this.nearGroundLayer.tilePositionX += shift * 0.65;
     this.trackLayer.tilePositionX += shift * 1.0;
+
+    // Shift distant Haven silhouette if active
+    if (this.finalStationSilhouette) {
+      this.finalStationSilhouette.x -= shift * 0.08;
+    }
+    if (this.greenSignalLight) {
+      this.greenSignalLight.x -= shift * 1.0;
+    }
   }
 }

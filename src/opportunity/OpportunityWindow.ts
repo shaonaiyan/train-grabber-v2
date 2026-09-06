@@ -8,15 +8,18 @@ export class OpportunityWindow {
   public groupId: string;
   public groupName: string;
   public spawnTime: number;
+  public decisionStartTime: number = 0;
   public duration: number;
   public itemsPresented: ItemId[];
   public activeWorldItems: WorldItem[] = [];
 
-  private trainStateAtSpawn: WindowChoiceRecord['trainStateAtSpawn'];
+  private trainManager: TrainManager;
+  private trainStateAtSpawn!: WindowChoiceRecord['trainStateAtSpawn'];
   private itemsAttempted: Set<ItemId> = new Set();
   private itemsGrabbed: Set<ItemId> = new Set();
   private firstTargetAttempted: ItemId | null = null;
   private timeToFirstDecision: number | null = null;
+  private hasStarted: boolean = false;
   private isFinished: boolean = false;
 
   constructor(
@@ -34,33 +37,46 @@ export class OpportunityWindow {
     this.spawnTime = spawnTime;
     this.duration = duration;
     this.itemsPresented = [...items];
+    this.trainManager = trainManager;
+  }
 
-    const attachedMods = trainManager.getAllInstalledModules().map((m) => m.itemId);
-    this.trainStateAtSpawn = {
-      hp: trainManager.stats.hp,
-      fuel: trainManager.stats.fuel,
-      load: trainManager.load.getCurrentLoad(),
-      maxLoad: trainManager.load.getMaxLoad(),
-      powerSupply: trainManager.power.getSupply(),
-      powerDemand: trainManager.power.getDemand(),
-      cars: trainManager.getCarCount(),
-      attachedItems: attachedMods,
-    };
+  public checkInteractionEnter(interactionEnterX: number, runTimeSec: number): void {
+    if (this.hasStarted) return;
 
-    EventBus.getInstance().emit('WINDOW_START', {
-      windowId: this.windowId,
-      groupId: this.groupId,
-      groupName: this.groupName,
-      items: this.itemsPresented,
-      spawnTime: this.spawnTime,
-      trainState: this.trainStateAtSpawn,
-    });
+    // Section 21: WINDOW_START triggered only when first item enters Interaction Zone!
+    const entered = this.activeWorldItems.some((item) => !item.isDestroyed && item.container.x <= interactionEnterX);
+    if (entered) {
+      this.hasStarted = true;
+      this.decisionStartTime = runTimeSec;
+
+      const attachedMods = this.trainManager.getAllInstalledModules().map((m) => m.itemId);
+      this.trainStateAtSpawn = {
+        hp: this.trainManager.stats.hp,
+        fuel: this.trainManager.stats.fuel,
+        load: this.trainManager.load.getCurrentLoad(),
+        maxLoad: this.trainManager.load.getMaxLoad(),
+        powerSupply: this.trainManager.power.getSupply(),
+        powerDemand: this.trainManager.power.getDemand(),
+        cars: this.trainManager.getCarCount(),
+        attachedItems: attachedMods,
+      };
+
+      EventBus.getInstance().emit('WINDOW_START', {
+        windowId: this.windowId,
+        groupId: this.groupId,
+        groupName: this.groupName,
+        items: this.itemsPresented,
+        spawnTime: this.spawnTime,
+        decisionStartTime: this.decisionStartTime,
+        trainState: this.trainStateAtSpawn,
+      });
+    }
   }
 
   public recordAttempt(itemId: ItemId, currentTime: number): void {
     if (!this.firstTargetAttempted) {
       this.firstTargetAttempted = itemId;
-      this.timeToFirstDecision = currentTime - this.spawnTime;
+      this.timeToFirstDecision = currentTime - (this.decisionStartTime || this.spawnTime);
     }
     this.itemsAttempted.add(itemId);
   }
@@ -69,21 +85,27 @@ export class OpportunityWindow {
     this.itemsGrabbed.add(itemId);
   }
 
-  public update(currentTime: number): boolean {
+  public update(runTimeSec: number, interactionEnterX: number, interactionExitX: number): boolean {
     if (this.isFinished) return true;
 
-    // Check if all items have either been destroyed/delivered/scrolled off
-    const anyRemaining = this.activeWorldItems.some((item) => !item.isDestroyed && !item.isDelivered);
-    const timeExpired = currentTime >= this.spawnTime + this.duration + 5.0; // Allow transit time
+    this.checkInteractionEnter(interactionEnterX, runTimeSec);
+    if (!this.hasStarted) return false;
 
-    if (!anyRemaining || timeExpired) {
-      this.finishWindow(currentTime);
-      return true;
+    // Section 22: Window End when all items in group are grabbed, destroyed, or passed ExitX
+    const activeRemaining = this.activeWorldItems.some(
+      (item) => !item.isDestroyed && !item.isDelivered && item.container.x >= interactionExitX
+    );
+
+    if (!activeRemaining) {
+      return true; // Complete, Director will call finishWindow
     }
     return false;
   }
 
   public finishWindow(endTime: number): WindowChoiceRecord {
+    if (this.isFinished) {
+      throw new Error(`Window ${this.windowId} already finished`);
+    }
     this.isFinished = true;
 
     const itemsIgnored: ItemId[] = [];
@@ -95,10 +117,22 @@ export class OpportunityWindow {
 
     const record: WindowChoiceRecord = {
       windowId: this.windowId,
+      groupId: this.groupId,
       spawnTime: this.spawnTime,
+      decisionStartTime: this.decisionStartTime || this.spawnTime,
+      decisionEndTime: endTime,
       endTime,
       itemsPresented: this.itemsPresented,
-      trainStateAtSpawn: this.trainStateAtSpawn,
+      trainStateAtSpawn: this.trainStateAtSpawn || {
+        hp: 100,
+        fuel: 70,
+        load: 0,
+        maxLoad: 48,
+        powerSupply: 2,
+        powerDemand: 0,
+        cars: 3,
+        attachedItems: [],
+      },
       itemsAttempted: Array.from(this.itemsAttempted),
       itemsSuccessfullyGrabbed: Array.from(this.itemsGrabbed),
       itemsIgnored,
@@ -106,6 +140,7 @@ export class OpportunityWindow {
       timeToFirstDecision: this.timeToFirstDecision,
     };
 
+    // Section 23: Emitted exactly once
     EventBus.getInstance().emit('WINDOW_END', { record });
     return record;
   }

@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { EventBus } from '../core/EventBus';
 
+export type BanditState = 'APPROACH' | 'TELEGRAPH' | 'ATTACK' | 'RETREAT' | 'EXIT';
+
 export class BanditJeep {
   public scene: Phaser.Scene;
   public container: Phaser.GameObjects.Container;
@@ -9,11 +11,15 @@ export class BanditJeep {
   public isDead: boolean = false;
   public priority: number = 1;
 
-  private attackInterval: number = 1.3;
+  public state: BanditState = 'APPROACH';
+  private attackInterval: number = 1.55; // Section 75
   private attackTimer: number = 0;
+  private telegraphTimer: number = 0;
+  private shotsFired: number = 0;
+  private maxShots: number = 4; // Section 76
   private damage: number = 6;
-  private speed: number = 190;
   private healthBar: Phaser.GameObjects.Graphics;
+  private telegraphIndicator: Phaser.GameObjects.Text;
   private onAttackTrain: (damage: number) => void;
 
   constructor(scene: Phaser.Scene, startX: number, startY: number, onAttack: (damage: number) => void) {
@@ -27,6 +33,16 @@ export class BanditJeep {
 
     this.healthBar = scene.add.graphics();
     this.container.add(this.healthBar);
+
+    // Section 74: Telegraph alert indicator
+    this.telegraphIndicator = scene.add.text(0, -42, '⚠️', {
+      fontFamily: 'Arial',
+      fontSize: '18px',
+    });
+    this.telegraphIndicator.setOrigin(0.5);
+    this.telegraphIndicator.setVisible(false);
+    this.container.add(this.telegraphIndicator);
+
     this.updateHealthBar();
 
     EventBus.getInstance().emit('ENEMY_SPAWN', { type: 'bandit', hp: this.hp });
@@ -54,11 +70,11 @@ export class BanditJeep {
 
     // Bandit gunner
     g.fillStyle(0xe74c3c, 1);
-    g.fillCircle(8, -18, 5); // Red bandana
+    g.fillCircle(8, -18, 5);
     g.fillStyle(0x111111, 1);
-    g.fillRect(10, -20, 18, 4); // Machinegun barrel
+    g.fillRect(10, -20, 18, 4);
 
-    // Massive off-road wheels
+    // Off-road wheels
     g.fillStyle(0x1a252f, 1);
     g.fillCircle(-20, 14, 11);
     g.fillCircle(20, 14, 11);
@@ -88,7 +104,6 @@ export class BanditJeep {
     this.hp -= dmg;
     this.updateHealthBar();
 
-    // Damage flash
     this.scene.tweens.add({
       targets: this.container,
       alpha: 0.5,
@@ -105,28 +120,67 @@ export class BanditJeep {
   public update(dt: number, worldSpeed: number, trainFrontX: number): void {
     if (this.isDead) return;
 
-    // Movement: drives towards the train's side
-    if (this.container.x > trainFrontX + 180) {
-      // Approach from ahead/behind
-      this.container.x -= (worldSpeed + 35) * dt;
-    } else if (this.container.x < trainFrontX - 250) {
-      // Catching up from behind
-      this.container.x += 60 * dt;
-    } else {
-      // Cruising beside train
-      this.container.x += Math.sin(this.scene.time.now * 0.003) * 0.5;
-    }
+    const inAttackRange =
+      this.container.x - trainFrontX <= 520 && this.container.x > trainFrontX - 80;
 
-    // Attack cycle
-    this.attackTimer += dt;
-    if (this.attackTimer >= this.attackInterval) {
-      this.attackTimer = 0;
-      this.fireAtTrain();
+    switch (this.state) {
+      case 'APPROACH':
+        // Drive towards train
+        this.container.x -= (worldSpeed + 45) * dt;
+        if (inAttackRange) {
+          // Enter telegraph
+          this.state = 'TELEGRAPH';
+          this.telegraphTimer = 0.55;
+          this.telegraphIndicator.setVisible(true);
+        }
+        break;
+
+      case 'TELEGRAPH':
+        this.container.x -= (worldSpeed - 15) * dt;
+        this.telegraphTimer -= dt;
+        if (this.telegraphTimer <= 0) {
+          this.telegraphIndicator.setVisible(false);
+          this.state = 'ATTACK';
+          this.attackTimer = 0;
+          this.fireAtTrain();
+        }
+        break;
+
+      case 'ATTACK':
+        // Cruise beside train
+        if (this.container.x > trainFrontX + 220) {
+          this.container.x -= (worldSpeed + 15) * dt;
+        } else if (this.container.x < trainFrontX + 80) {
+          this.container.x += 40 * dt;
+        }
+
+        this.attackTimer += dt;
+        if (this.attackTimer >= this.attackInterval) {
+          this.attackTimer = 0;
+          this.fireAtTrain();
+        }
+        break;
+
+      case 'RETREAT':
+        // Section 77: Retreats backwards away from train
+        this.container.x -= (worldSpeed + 80) * dt;
+        if (this.container.x < -180) {
+          this.state = 'EXIT';
+          this.isDead = true;
+          this.container.destroy();
+        }
+        break;
     }
   }
 
   private fireAtTrain(): void {
-    // Muzzle flash on gunner
+    if (this.shotsFired >= this.maxShots) {
+      this.state = 'RETREAT';
+      return;
+    }
+
+    this.shotsFired++;
+
     const flash = this.scene.add.graphics();
     flash.fillStyle(0xffeb3b, 1);
     flash.fillCircle(this.container.x + 30, this.container.y - 20, 7);
@@ -134,13 +188,16 @@ export class BanditJeep {
     this.scene.time.delayedCall(70, () => flash.destroy());
 
     this.onAttackTrain(this.damage);
+
+    if (this.shotsFired >= this.maxShots) {
+      this.state = 'RETREAT';
+    }
   }
 
   private die(): void {
     this.isDead = true;
     EventBus.getInstance().emit('ENEMY_KILLED', { type: 'bandit' });
 
-    // Wreck flip animation
     this.scene.tweens.add({
       targets: this.container,
       y: this.container.y + 30,

@@ -7,6 +7,7 @@ export class ItemFactory {
   private scene: Phaser.Scene;
   private itemsMap: Map<ItemId, ItemData> = new Map();
   private seenItemTypes: Set<ItemId> = new Set();
+  private instanceCounter: number = 0;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -21,11 +22,32 @@ export class ItemFactory {
     if (!data) {
       throw new Error(`Item ID not found: ${id}`);
     }
-    return data;
+    return { ...data };
   }
 
-  public spawnWorldItem(x: number, y: number, id: ItemId, depthBand: DepthBand): WorldItem {
-    const data = this.getItemData(id);
+  public spawnWorldItem(
+    x: number,
+    y: number,
+    id: ItemId,
+    depthBand: DepthBand,
+    windowId: string = 'win_0',
+    spawnPhaseId: number = 0,
+    outcomeSeed: number = 0
+  ): WorldItem {
+    this.instanceCounter++;
+    const baseData = this.getItemData(id);
+
+    // Section 60-62: WorldItem metadata and Trade Line bonus detection
+    const isTradeLine = spawnPhaseId === 3;
+    const data: ItemData = {
+      ...baseData,
+      instanceId: `inst_${this.instanceCounter}_${id}`,
+      windowId,
+      spawnPhaseId,
+      outcomeSeed,
+      fromTradeLine: isTradeLine,
+    };
+
     const isFirstTime = !this.seenItemTypes.has(id);
     if (isFirstTime) {
       this.seenItemTypes.add(id);

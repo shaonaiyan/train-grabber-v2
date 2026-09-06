@@ -35,10 +35,10 @@ export class WorldItem {
 
     const props = this.depthManager.getPropertiesForY(y);
 
-    // Shadow
+    // Section 9: Ground contact shadow directly touching bottom of object
     this.shadow = scene.add.graphics();
-    this.shadow.fillStyle(0x000000, 0.35);
-    this.shadow.fillEllipse(0, 0, 36 * props.shadowScale, 14 * props.shadowScale);
+    this.shadow.fillStyle(0x000000, 0.42);
+    this.shadow.fillEllipse(0, 0, 34 * props.shadowScale, 10 * props.shadowScale);
     this.shadow.setPosition(x, y + props.shadowYOffset);
     this.shadow.setDepth(props.depth - 0.5);
 
@@ -71,13 +71,20 @@ export class WorldItem {
     });
     this.container.add(hitArea);
 
-    EventBus.getInstance().emit('ITEM_SEEN', { item: data.id, x, y });
+    EventBus.getInstance().emit('ITEM_SEEN', {
+      item: data.id,
+      x,
+      y,
+      instanceId: data.instanceId,
+      windowId: data.windowId,
+    });
   }
 
   private buildItemVisuals(): void {
     const g = this.scene.add.graphics();
     this.container.add(g);
 
+    // Items drawn so their bottom contact point rests at Y ≈ +14px
     switch (this.data.id) {
       case 'parts':
         // Wooden repair toolbox crate with wrench emblem
@@ -93,13 +100,13 @@ export class WorldItem {
 
       case 'fuel':
         // Fuel drum / canister
-        g.fillStyle(0xd32f2f, 1); // Hazard red
-        g.fillRoundedRect(-14, -18, 28, 36, 4);
+        g.fillStyle(0xd32f2f, 1);
+        g.fillRoundedRect(-14, -18, 28, 32, 4);
         g.lineStyle(2, 0x851414, 1);
-        g.strokeRoundedRect(-14, -18, 28, 36, 4);
-        g.fillStyle(0xffeb3b, 1); // Fuel flame icon
-        g.fillTriangle(0, -10, -6, 4, 6, 4);
-        g.fillCircle(0, 5, 4);
+        g.strokeRoundedRect(-14, -18, 28, 32, 4);
+        g.fillStyle(0xffeb3b, 1);
+        g.fillTriangle(0, -10, -6, 2, 6, 2);
+        g.fillCircle(0, 4, 3.5);
         break;
 
       case 'gold':
@@ -109,24 +116,24 @@ export class WorldItem {
         g.lineStyle(2, 0x9a7d0a, 1);
         g.strokeRoundedRect(-16, -14, 32, 28, 3);
         g.fillStyle(0xfef9e7, 1);
-        g.fillCircle(4, -6, 3); // Glimmer
+        g.fillCircle(4, -6, 3);
         break;
 
       case 'turret':
         // Auto turret package
         g.fillStyle(0x2e7d32, 1);
-        g.fillCircle(0, 0, 15);
+        g.fillCircle(0, -2, 15);
         g.fillStyle(0x1b5e20, 1);
-        g.fillRect(-14, 5, 28, 8);
+        g.fillRect(-14, 4, 28, 10);
         g.fillStyle(0x212121, 1);
-        g.fillRect(0, -5, 20, 5);
-        g.fillRect(0, 2, 20, 5);
+        g.fillRect(0, -7, 20, 5);
+        g.fillRect(0, 0, 20, 5);
         break;
 
       case 'battery':
         // High voltage battery pack
         g.fillStyle(0x1565c0, 1);
-        g.fillRoundedRect(-14, -15, 28, 30, 4);
+        g.fillRoundedRect(-14, -15, 28, 29, 4);
         g.fillStyle(0x00e676, 1);
         g.fillRect(-10, -8, 20, 4);
         g.fillRect(-10, 0, 20, 4);
@@ -142,60 +149,66 @@ export class WorldItem {
         break;
 
       case 'flat_car':
-        // Mini flatbed car frame on skids
+        // Mini flatbed chassis frame
         g.fillStyle(0x424242, 1);
-        g.fillRect(-24, -8, 48, 16);
-        g.lineStyle(2, 0xf57c00, 1); // Orange caution boundary
-        g.strokeRect(-24, -8, 48, 16);
+        g.fillRect(-24, -8, 48, 22);
+        g.lineStyle(2, 0xf57c00, 1);
+        g.strokeRect(-24, -8, 48, 22);
         g.fillStyle(0x616161, 1);
         g.fillRect(-20, -12, 6, 4);
         g.fillRect(14, -12, 6, 4);
         break;
 
       case 'sheep':
-        // Woolly sheep
+        // Woolly sheep with legs touching ground
         g.fillStyle(0xf5f5f5, 1);
-        g.fillCircle(0, 0, 14);
-        g.fillCircle(-8, -3, 10);
+        g.fillCircle(0, -4, 14);
+        g.fillCircle(-8, -7, 10);
         g.fillStyle(0x212121, 1);
-        g.fillCircle(12, -4, 6);
+        g.fillCircle(12, -8, 6);
         g.fillStyle(0xffffff, 1);
-        g.fillCircle(13, -5, 2);
+        g.fillCircle(13, -9, 2);
+        // Legs
+        g.fillStyle(0x212121, 1);
+        g.fillRect(-8, 5, 3, 9);
+        g.fillRect(5, 5, 3, 9);
         break;
 
       case 'survivor':
-        // Wasteland survivor standing / waving
+        // Wasteland survivor standing
         g.fillStyle(0xff9800, 1);
-        g.fillRoundedRect(-8, -6, 16, 20, 3);
+        g.fillRoundedRect(-8, -6, 16, 18, 3);
         g.fillStyle(0xffcc80, 1);
-        g.fillCircle(0, -12, 7);
+        g.fillCircle(0, -13, 7);
         g.fillStyle(0x37474f, 1);
-        g.fillRect(-6, -14, 12, 4); // Goggles
+        g.fillRect(-6, -15, 12, 4);
+        g.fillRect(-5, 8, 4, 6);
+        g.fillRect(1, 8, 4, 6);
         break;
 
       case 'fridge':
-        // Vintage rounded fridge with tape
+        // Vintage rounded fridge
         g.fillStyle(0xb0bec5, 1);
-        g.fillRoundedRect(-12, -18, 24, 36, 4);
+        g.fillRoundedRect(-12, -18, 24, 32, 4);
         g.lineStyle(2, 0x37474f, 1);
-        g.strokeRoundedRect(-12, -18, 24, 36, 4);
+        g.strokeRoundedRect(-12, -18, 24, 32, 4);
         g.fillStyle(0xff5722, 1);
-        g.fillRect(-10, 8, 20, 3);
+        g.fillRect(-10, 6, 20, 3);
         break;
 
       case 'egg':
-        // Bioluminescent monster egg
+        // Bioluminescent monster egg nestled in cradle
         g.fillStyle(0x7b1fa2, 1);
-        g.fillEllipse(0, 0, 18, 26);
+        g.fillEllipse(0, -2, 18, 26);
         g.fillStyle(0x69f0ae, 0.9);
-        g.fillCircle(-3, -5, 3.5);
-        g.fillCircle(3, 4, 4);
+        g.fillCircle(-3, -7, 3.5);
+        g.fillCircle(3, 2, 4);
         break;
 
       case 'explosive':
         // Red TNT explosive barrel
         g.fillStyle(0xc62828, 1);
-        g.fillRoundedRect(-14, -16, 28, 32, 3);
+        g.fillRoundedRect(-14, -16, 28, 30, 3);
         g.fillStyle(0x212121, 1);
         g.fillRect(-14, -8, 28, 4);
         g.fillRect(-14, 4, 28, 4);
@@ -206,7 +219,7 @@ export class WorldItem {
       case 'junk':
         // Scrap bundle with ropes
         g.fillStyle(0x546e7a, 1);
-        g.fillRect(-14, -10, 28, 20);
+        g.fillRect(-14, -10, 28, 24);
         g.fillStyle(0x78909c, 1);
         g.fillCircle(4, -8, 8);
         g.lineStyle(2, 0xe65100, 1);
@@ -215,7 +228,6 @@ export class WorldItem {
         break;
     }
 
-    // Prepare hover outline graphics
     this.outlineGlow.clear();
     this.outlineGlow.lineStyle(3, 0x00ffff, 0.85);
     this.outlineGlow.strokeCircle(0, 0, 24);
@@ -245,7 +257,6 @@ export class WorldItem {
     this.container.add(tipContainer);
     this.firstSeenLabel = tipContainer;
 
-    // Fade out after 1.5s (Section 86)
     this.scene.tweens.add({
       targets: tipContainer,
       alpha: 0,
@@ -265,12 +276,10 @@ export class WorldItem {
   public update(deltaSeconds: number, worldSpeed: number): void {
     if (this.isLatched || this.isDelivered || this.isDestroyed) return;
 
-    // Move left with world speed
     this.container.x -= worldSpeed * deltaSeconds;
     this.shadow.x = this.container.x;
 
-    // Destroy if scrolled way past left screen
-    if (this.container.x < -100) {
+    if (this.container.x < -150) {
       this.destroy();
     }
   }

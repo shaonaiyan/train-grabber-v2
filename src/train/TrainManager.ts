@@ -11,7 +11,7 @@ import balanceData from '../data/balance.json';
 
 export class TrainManager {
   private scene: Phaser.Scene;
-  private cars: TrainCar[] = [];
+  public cars: TrainCar[] = [];
   public stats: TrainStatsManager;
   public power: PowerSystem;
   public load: LoadSystem;
@@ -23,6 +23,7 @@ export class TrainManager {
   private rootY: number;
   private flatCarCount: number = 0;
   private discardedCount: number = 0;
+  private moduleCounter: number = 0;
 
   private hoveredModule: InstalledModule | null = null;
   private tooltipText: Phaser.GameObjects.Text | null = null;
@@ -38,7 +39,8 @@ export class TrainManager {
     this.power = new PowerSystem();
     this.load = new LoadSystem();
 
-    this.rootX = 1920 * balanceData.train.startXPercent + 120; // Locomotive front
+    // Section 6: Train front center X ≈ 620~670, Track Baseline Y ≈ 710
+    this.rootX = 650;
     this.rootY = balanceData.depth.trackY - 2;
 
     this.initTrain();
@@ -67,14 +69,13 @@ export class TrainManager {
   }
 
   private repositionCars(): void {
-    // Locomotive is at the front (rootX)
     let currentX = this.rootX;
     for (let i = 0; i < this.cars.length; i++) {
       const car = this.cars[i];
       car.baseCarX = currentX;
       car.baseCarY = this.rootY;
       car.container.setPosition(car.baseCarX, car.baseCarY);
-      currentX -= car.width - 6; // overlap couplers
+      currentX -= car.width - 8; // overlap couplers
     }
   }
 
@@ -82,7 +83,7 @@ export class TrainManager {
     const craneCar = this.cars[1];
     return {
       x: craneCar.baseCarX,
-      y: craneCar.baseCarY - 22,
+      y: craneCar.baseCarY - 26,
     };
   }
 
@@ -97,7 +98,7 @@ export class TrainManager {
     this.repositionCars();
     this.recalculateAllStats();
 
-    // Visual dip and particles
+    // Section 57: Clang impact, bounce, particles
     newCar.dipOnInstall();
     this.particles.emitInstallBurst(newCar.baseCarX, newCar.baseCarY);
     this.audio.playInstall();
@@ -113,13 +114,15 @@ export class TrainManager {
   }
 
   private updateCameraFraming(): void {
-    // Section 106: camera framing based on car count
+    // Section 5: Smooth 500~700ms tween zoom
     const cam = this.scene.cameras.main;
     let targetZoom = 1.0;
     if (this.cars.length >= 6) {
       targetZoom = 0.88;
-    } else if (this.cars.length >= 4) {
-      targetZoom = 0.94;
+    } else if (this.cars.length === 5) {
+      targetZoom = 0.92;
+    } else if (this.cars.length === 4) {
+      targetZoom = 0.96;
     }
 
     this.scene.tweens.add({
@@ -148,6 +151,14 @@ export class TrainManager {
 
   public canFitLoad(item: ItemData): boolean {
     if (item.type === 'Consumable') return true;
+
+    // Section 58-59: Flat Car special calculation (newLoad <= newMaxLoad)
+    if (item.type === 'Car') {
+      const newLoad = this.load.getCurrentLoad() + balanceData.train.flatCarInstallLoad;
+      const newMaxLoad = this.load.getMaxLoad() + balanceData.train.flatCarMaxLoadBonus;
+      return newLoad <= newMaxLoad;
+    }
+
     const weight = item.installLoad || item.load || 0;
     return this.load.canFitLoad(weight);
   }
@@ -163,20 +174,20 @@ export class TrainManager {
     for (const car of this.cars) {
       const slot = car.getAvailableSlot(item.slot);
       if (slot) {
+        this.moduleCounter++;
         const module: InstalledModule = {
-          uid: 'mod_' + Date.now() + '_' + Math.floor(Math.random() * 10000),
+          uid: `mod_${this.moduleCounter}`,
           itemId: item.id,
           data: item,
           carIndex: car.carIndex,
           slotType: item.slot,
-          installedTime: this.scene.time.now,
-          fromTradeLine: isTradeLine,
+          installedTime: (this.scene as any).runTimeSec || 0,
+          fromTradeLine: item.fromTradeLine || isTradeLine,
           stateTimer: 0,
         };
 
         const success = car.installModule(module);
         if (success) {
-          car.dipOnInstall();
           this.particles.emitInstallBurst(
             car.baseCarX + slot.relativeX,
             car.baseCarY + slot.relativeY
@@ -194,6 +205,10 @@ export class TrainManager {
   public discardModule(module: InstalledModule): void {
     const car = this.cars[module.carIndex];
     if (!car) return;
+
+    const loadBefore = this.load.getCurrentLoad();
+    const cargoBefore = this.getCargoValue();
+    const powerBefore = this.power.getSupply();
 
     const removed = car.removeModule(module.uid);
     if (removed) {
@@ -215,19 +230,30 @@ export class TrainManager {
         });
       }
 
+      this.recalculateAllStats();
+
+      const loadAfter = this.load.getCurrentLoad();
+      const cargoAfter = this.getCargoValue();
+      const powerAfter = this.power.getSupply();
+
       this.eventBus.emit('ITEM_DISCARDED', {
         item: module.itemId,
-        time: this.scene.time.now * 0.001,
+        discardedItem: module.itemId,
+        loadBefore,
+        loadAfter,
+        cargoBefore,
+        cargoAfter,
+        powerBefore,
+        powerAfter,
+        time: (this.scene as any).runTimeSec || 0,
         reasonContext: {
-          currentLoad: this.load.getCurrentLoad(),
+          currentLoad: loadAfter,
           maxLoad: this.load.getMaxLoad(),
           fuel: this.stats.fuel,
-          powerSupply: this.power.getSupply(),
+          powerSupply: powerAfter,
           powerDemand: this.power.getDemand(),
         },
       });
-
-      this.recalculateAllStats();
     }
   }
 
@@ -237,10 +263,10 @@ export class TrainManager {
 
     const g = this.scene.add.graphics();
     g.fillStyle(0x7f8c8d, 0.9);
-    g.fillCircle(0, 0, 10);
+    g.fillCircle(0, 0, 12);
     discardSprite.add(g);
 
-    // Parabolic fling backwards onto the ground
+    // Parabolic fling backwards onto the track
     this.scene.tweens.add({
       targets: discardSprite,
       x: startX - 180,
@@ -249,7 +275,6 @@ export class TrainManager {
       duration: 650,
       ease: 'Quad.easeOut',
       onComplete: () => {
-        // Slide on ground and fade out over 2.5s (Section 51)
         this.scene.tweens.add({
           targets: discardSprite,
           x: discardSprite.x - 300,
@@ -282,6 +307,28 @@ export class TrainManager {
 
     this.power.recalculate(batteries, turrets);
     this.load.recalculate(installedLoad, this.flatCarCount);
+  }
+
+  public getCargoValue(): number {
+    // Section 66-67: Only gold, sheep, survivor, food fridge, friendly egg, junk
+    let total = 0;
+    const modules = this.getAllInstalledModules();
+    for (const m of modules) {
+      if (m.itemId === 'gold') {
+        total += m.fromTradeLine ? 168 : 140;
+      } else if (m.itemId === 'sheep') {
+        total += m.fromTradeLine ? 108 : 90;
+      } else if (m.itemId === 'survivor') {
+        total += 50;
+      } else if (m.itemId === 'junk') {
+        total += 5;
+      } else if (m.itemId === 'fridge' && m.customData?.outcome === 'FOOD') {
+        total += 80;
+      } else if (m.itemId === 'egg' && m.customData?.outcome === 'FRIENDLY') {
+        total += 60;
+      }
+    }
+    return total;
   }
 
   public getSurvivorCount(): number {
@@ -342,16 +389,14 @@ export class TrainManager {
     const powerEfficiency = this.power.getEfficiency();
     const hasShortage = this.power.hasShortage();
 
-    // Update cars vibration and wheel animation
     for (const car of this.cars) {
       car.update(time, speed, powerEfficiency, hasShortage);
     }
 
-    // Locomotive smoke & wheel dust particles
     if (speed > 10) {
       const loco = this.cars[0];
-      this.particles.emitTrainSmoke(loco.baseCarX + 45, loco.baseCarY - 50);
-      this.particles.emitWheelDust(loco.baseCarX - 30, loco.baseCarY + 30);
+      this.particles.emitTrainSmoke(loco.baseCarX + 65, loco.baseCarY - 60);
+      this.particles.emitWheelDust(loco.baseCarX - 40, loco.baseCarY + 34);
     }
   }
 

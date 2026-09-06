@@ -1,7 +1,7 @@
 {
   "train": {
-    "startXPercent": 0.28,
-    "startYPercent": 0.68,
+    "startXPercent": 0.30,
+    "startYPercent": 0.66,
     "baseHp": 100,
     "baseFuel": 70,
     "maxFuel": 100,
@@ -39,12 +39,15 @@
     "snapDistance": 90,
     "snapDuration": 0.25,
     "decisionWindowDuration": 1.0,
-    "hitStopDuration": 60
+    "hitStopDuration": 60,
+    "recoilDistance": 8,
+    "tightenDuration": 110,
+    "maxLag": 65
   },
   "depth": {
-    "far": { "minY": 330, "maxY": 420, "minScale": 0.82, "maxScale": 0.88, "depth": 10 },
-    "mid": { "minY": 420, "maxY": 530, "minScale": 0.88, "maxScale": 0.96, "depth": 20 },
-    "near": { "minY": 530, "maxY": 640, "minScale": 0.96, "maxScale": 1.05, "depth": 30 },
+    "far": { "minY": 485, "maxY": 535, "minScale": 0.80, "maxScale": 0.87, "depth": 10 },
+    "mid": { "minY": 535, "maxY": 595, "minScale": 0.88, "maxScale": 0.96, "depth": 20 },
+    "near": { "minY": 595, "maxY": 655, "minScale": 0.97, "maxScale": 1.05, "depth": 30 },
     "trackY": 710,
     "trainDepth": 25
   },

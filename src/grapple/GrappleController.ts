@@ -33,6 +33,14 @@ export class GrappleController {
   private rejectionTimer: number = 0;
   private rejectionReason: 'OVERLOAD' | 'NO_SLOT' | null = null;
 
+  // V2.1 Damped Spring & Heavy Tightening Physics
+  private itemVisualX: number = 0;
+  private itemVisualY: number = 0;
+  private itemVx: number = 0;
+  private itemVy: number = 0;
+  private tightenTimer: number = 0;
+  private dragParticleTimer: number = 0;
+
   // Holding warning text
   private holdingText: Phaser.GameObjects.Text | null = null;
 
@@ -113,7 +121,6 @@ export class GrappleController {
         break;
 
       case 'HIT':
-        // Transition immediately into pulling
         this.fsm.setState('PULLING');
         break;
 
@@ -152,7 +159,6 @@ export class GrappleController {
     this.hookY += this.fireDirY * step;
     this.distanceTraveled += step;
 
-    // Check hit collision against available items
     for (const item of availableItems) {
       if (item.isLatched || item.isDelivered || item.isDestroyed) continue;
 
@@ -170,7 +176,6 @@ export class GrappleController {
       }
     }
 
-    // Check max range
     if (this.distanceTraveled >= balanceData.hook.range) {
       this.fsm.setState('MISS');
       this.eventBus.emit('GRAPPLE_MISS', { distance: this.distanceTraveled });
@@ -182,9 +187,23 @@ export class GrappleController {
     this.latchedItem = item;
     item.isLatched = true;
 
+    // Initialize Damped Spring state
+    this.itemVisualX = item.container.x;
+    this.itemVisualY = item.container.y;
+    this.itemVx = 0;
+    this.itemVy = 0;
+
+    // Section 39: Heavy chain tightening phase (80~140ms)
+    const weight = item.hookWeight;
+    if (weight >= 11) {
+      this.tightenTimer = balanceData.hook.tightenDuration * 0.001;
+    } else {
+      this.tightenTimer = 0;
+    }
+
     this.fsm.setState('HIT');
     this.juice.triggerHitStop(balanceData.hook.hitStopDuration);
-    this.juice.screenShake(0.005, 120);
+    this.juice.screenShake(0.004, 100);
     this.particles.emitHitSparks(this.hookX, this.hookY, 12);
     this.audio.playHookHit();
 
@@ -198,8 +217,20 @@ export class GrappleController {
       return;
     }
 
-    // Formula: clamp(650 - HookWeight * 15, 260, 650)
     const weight = this.latchedItem.hookWeight;
+
+    // Section 39: Chain tightening pause for heavy items
+    if (this.tightenTimer > 0) {
+      this.tightenTimer -= dt;
+      // Slight budge towards crane
+      const angle = Phaser.Math.Angle.Between(this.itemVisualX, this.itemVisualY, cranePos.x, cranePos.y);
+      this.itemVisualX += Math.cos(angle) * 12 * dt;
+      this.itemVisualY += Math.sin(angle) * 12 * dt;
+      this.latchedItem.container.setPosition(this.itemVisualX, this.itemVisualY);
+      return;
+    }
+
+    // Pull Speed formula: clamp(650 - HookWeight * 15, 260, 650)
     const pullSpeed = Phaser.Math.Clamp(
       balanceData.hook.basePullSpeed - weight * balanceData.hook.weightPullPenalty,
       balanceData.hook.minPullSpeed,
@@ -208,7 +239,7 @@ export class GrappleController {
 
     const dist = Phaser.Math.Distance.Between(this.hookX, this.hookY, cranePos.x, cranePos.y);
 
-    // Section 27: final 90px auxiliary snap mode
+    // Section 27: final 90px auxiliary snap
     if (dist <= balanceData.hook.snapDistance) {
       this.fsm.setState('DELIVER');
       return;
@@ -220,13 +251,56 @@ export class GrappleController {
     this.hookX += Math.cos(angle) * step;
     this.hookY += Math.sin(angle) * step;
 
-    // Attach item to hook with slight inertia sway
-    this.latchedItem.container.setPosition(this.hookX, this.hookY);
-    this.latchedItem.shadow.setPosition(this.hookX, this.hookY + 20);
+    // Section 37-38: Damped Spring Follow (Lag based on weight)
+    let springK = 26;
+    let damping = 0.70;
+    if (weight >= 12) {
+      springK = 10;
+      damping = 0.55;
+    } else if (weight >= 7) {
+      springK = 18;
+      damping = 0.65;
+    }
 
-    // Dust particles for heavy items
-    if (weight >= 8) {
-      this.particles.emitWheelDust(this.hookX, this.hookY + 10);
+    // Spring force towards hook
+    const dx = this.hookX - this.itemVisualX;
+    const dy = this.hookY - this.itemVisualY;
+    const ax = dx * springK;
+    const ay = dy * springK;
+
+    this.itemVx = (this.itemVx + ax * dt) * Math.pow(damping, dt * 60);
+    this.itemVy = (this.itemVy + ay * dt) * Math.pow(damping, dt * 60);
+
+    this.itemVisualX += this.itemVx * dt;
+    this.itemVisualY += this.itemVy * dt;
+
+    // Clamp lag distance to max 65px (Section 38)
+    const currentLag = Phaser.Math.Distance.Between(this.itemVisualX, this.itemVisualY, this.hookX, this.hookY);
+    if (currentLag > balanceData.hook.maxLag) {
+      const lagAngle = Phaser.Math.Angle.Between(this.hookX, this.hookY, this.itemVisualX, this.itemVisualY);
+      this.itemVisualX = this.hookX + Math.cos(lagAngle) * balanceData.hook.maxLag;
+      this.itemVisualY = this.hookY + Math.sin(lagAngle) * balanceData.hook.maxLag;
+    }
+
+    // Section 40: Rotation swing ±8°~18° based on velocity
+    const swing = Phaser.Math.Clamp(this.itemVx * 0.04, -0.28, 0.28);
+    this.latchedItem.container.setRotation(swing);
+
+    this.latchedItem.container.setPosition(this.itemVisualX, this.itemVisualY);
+    this.latchedItem.shadow.setPosition(this.itemVisualX, this.itemVisualY + 16);
+
+    // Section 41: Ground dragging dust/sparks for heavy ground loot
+    const itemId = this.latchedItem.data.id;
+    const isGroundScrap = itemId === 'gold' || itemId === 'fridge' || itemId === 'junk' || itemId === 'flat_car' || itemId === 'explosive';
+    if (isGroundScrap && this.itemVisualY >= 530) {
+      this.dragParticleTimer += dt;
+      if (this.dragParticleTimer >= 0.12) {
+        this.dragParticleTimer = 0;
+        this.particles.emitWheelDust(this.itemVisualX, this.itemVisualY + 14);
+        if (weight >= 12) {
+          this.particles.emitHitSparks(this.itemVisualX, this.itemVisualY + 14, 3);
+        }
+      }
     }
   }
 
@@ -259,7 +333,7 @@ export class GrappleController {
       this.latchedItem.destroy();
       this.latchedItem = null;
 
-      this.eventBus.emit('ITEM_DELIVERED', { item: itemData.id });
+      this.eventBus.emit('ITEM_DELIVERED', { item: itemData.id, instanceId: itemData.instanceId, windowId: itemData.windowId, spawnPhaseId: itemData.spawnPhaseId });
       this.fsm.setState('IDLE');
       return;
     }
@@ -270,13 +344,25 @@ export class GrappleController {
 
     if (fitsLoad && hasSlot) {
       // Successful installation!
-      const installed = this.trainManager.installItem(itemData);
+      const installed = this.trainManager.installItem(itemData, itemData.fromTradeLine);
       if (installed) {
+        // Section 68: Show CARGO +XXX feedback
+        const cargoBonus = itemData.finishScore || 0;
+        if (cargoBonus > 0) {
+          const effectiveCargo = itemData.fromTradeLine ? Math.round(cargoBonus * 1.2) : cargoBonus;
+          this.juice.showFloatingText(cranePos.x, cranePos.y - 45, `CARGO +${effectiveCargo}`, '#f1c40f', '24px');
+        }
+
         this.latchedItem.isDelivered = true;
         this.latchedItem.destroy();
         this.latchedItem = null;
 
-        this.eventBus.emit('ITEM_DELIVERED', { item: itemData.id });
+        this.eventBus.emit('ITEM_DELIVERED', {
+          item: itemData.id,
+          instanceId: itemData.instanceId,
+          windowId: itemData.windowId,
+          spawnPhaseId: itemData.spawnPhaseId,
+        });
         this.fsm.setState('IDLE');
         return;
       }
@@ -310,7 +396,6 @@ export class GrappleController {
     }
 
     if (this.rejectionTimer <= 0) {
-      // 1.0s expired without resolution: release item!
       this.eventBus.emit('ITEM_REJECTED', {
         item: this.latchedItem.data.id,
         reason: this.rejectionReason,
@@ -330,8 +415,7 @@ export class GrappleController {
     const hasSlot = this.trainManager.hasSlotFor(itemData);
 
     if (fitsLoad && hasSlot) {
-      // Player dropped an item to make room within the 1.0s window! (Section 109)
-      const installed = this.trainManager.installItem(itemData);
+      const installed = this.trainManager.installItem(itemData, itemData.fromTradeLine);
       if (installed) {
         this.juice.showFloatingText(this.hookX, this.hookY - 40, 'SPACE FREED: INSTALLED!', '#2ecc71', '24px');
         this.latchedItem.isDelivered = true;
@@ -339,7 +423,12 @@ export class GrappleController {
         this.latchedItem = null;
 
         this.clearHoldingUI();
-        this.eventBus.emit('ITEM_DELIVERED', { item: itemData.id });
+        this.eventBus.emit('ITEM_DELIVERED', {
+          item: itemData.id,
+          instanceId: itemData.instanceId,
+          windowId: itemData.windowId,
+          spawnPhaseId: itemData.spawnPhaseId,
+        });
         this.fsm.setState('IDLE');
       }
     }
@@ -352,7 +441,6 @@ export class GrappleController {
     item.isLatched = false;
     this.latchedItem = null;
 
-    // Fling item backwards away onto track
     this.scene.tweens.add({
       targets: item.container,
       x: item.container.x - 220,

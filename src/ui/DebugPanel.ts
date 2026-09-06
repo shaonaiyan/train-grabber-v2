@@ -28,6 +28,11 @@ export class DebugPanel {
   public timeScale: number = 1.0;
   public ignoreLoadLimit: boolean = false;
   public showOverlays: boolean = false;
+  public showInteractionZone: boolean = false;
+
+  private adaptiveBtnText!: Phaser.GameObjects.Text;
+  private worldLockBtnText!: Phaser.GameObjects.Text;
+  private zoneBtnText!: Phaser.GameObjects.Text;
 
   constructor(
     scene: Phaser.Scene,
@@ -48,7 +53,7 @@ export class DebugPanel {
     this.allWorldItems = allWorldItems;
     this.seed = seed;
 
-    this.container = scene.add.container(20, 100);
+    this.container = scene.add.container(20, 60);
     this.container.setDepth(300);
     this.container.setVisible(false);
 
@@ -74,10 +79,10 @@ export class DebugPanel {
 
   private buildPanelUI(): void {
     const bg = this.scene.add.graphics();
-    bg.fillStyle(0x0a0e14, 0.94);
-    bg.fillRoundedRect(0, 0, 780, 580, 8);
+    bg.fillStyle(0x0a0e14, 0.95);
+    bg.fillRoundedRect(0, 0, 840, 680, 8);
     bg.lineStyle(2, 0x00ffff, 1);
-    bg.strokeRoundedRect(0, 0, 780, 580, 8);
+    bg.strokeRoundedRect(0, 0, 840, 680, 8);
     this.container.add(bg);
 
     const title = this.scene.add.text(20, 12, '🛠️ DEBUG SYSTEM PANEL [F1]', {
@@ -88,46 +93,53 @@ export class DebugPanel {
     });
     this.container.add(title);
 
-    // Left Column: Real-time Stats Display (Section 88)
-    this.debugStatsText = this.scene.add.text(20, 45, '', {
+    // Left Column: Real-time Stats Display
+    this.debugStatsText = this.scene.add.text(20, 42, '', {
       fontFamily: 'Consolas, monospace',
-      fontSize: '13px',
+      fontSize: '12px',
       color: '#ecf0f1',
-      lineSpacing: 4,
+      lineSpacing: 3,
     });
     this.container.add(this.debugStatsText);
 
-    // Right Column: Interactive Buttons (Section 87)
+    // Right Column: Interactive Buttons
     let btnX = 390;
-    let btnY = 45;
+    let btnY = 42;
 
     const createBtn = (label: string, onClick: () => void, color: number = 0x2980b9) => {
       const bCont = this.scene.add.container(btnX, btnY);
       const bG = this.scene.add.graphics();
       bG.fillStyle(color, 1);
-      bG.fillRoundedRect(0, 0, 115, 26, 4);
+      bG.fillRoundedRect(0, 0, 102, 24, 4);
       bG.lineStyle(1, 0xffffff, 0.6);
-      bG.strokeRoundedRect(0, 0, 115, 26, 4);
+      bG.strokeRoundedRect(0, 0, 102, 24, 4);
 
-      const bTxt = this.scene.add.text(57, 13, label, {
+      const bTxt = this.scene.add.text(51, 12, label, {
         fontFamily: 'Arial',
-        fontSize: '12px',
+        fontSize: '11px',
         fontStyle: 'bold',
         color: '#ffffff',
       });
       bTxt.setOrigin(0.5);
 
-      const hit = this.scene.add.rectangle(57, 13, 115, 26, 0x000000, 0.001);
+      const hit = this.scene.add.rectangle(51, 12, 102, 24, 0x000000, 0.001);
       hit.setInteractive({ cursor: 'pointer' });
       hit.on('pointerdown', onClick);
 
       bCont.add([bG, bTxt, hit]);
       this.container.add(bCont);
-      btnX += 125;
-      if (btnX > 720) {
+
+      btnX += 110;
+      if (btnX > 790) {
         btnX = 390;
-        btnY += 32;
+        btnY += 28;
       }
+      return bTxt;
+    };
+
+    const nextRow = () => {
+      btnX = 390;
+      btnY += 30;
     };
 
     // Row 1: Flow Controls
@@ -138,11 +150,47 @@ export class DebugPanel {
     createBtn('Speed x1.0', () => (this.timeScale = 1.0));
     createBtn('Speed x2.0', () => (this.timeScale = 2.0));
 
-    // Row 2: Train Cheats
+    // Row 2: V2.1 Director & World Mode Toggles
+    nextRow();
+    this.adaptiveBtnText = createBtn(
+      `Adaptive: ${this.director.isAdaptiveEnabled ? 'ON' : 'OFF'}`,
+      () => {
+        this.director.isAdaptiveEnabled = !this.director.isAdaptiveEnabled;
+        this.adaptiveBtnText.setText(`Adaptive: ${this.director.isAdaptiveEnabled ? 'ON' : 'OFF'}`);
+      },
+      0x8e44ad
+    );
+    this.worldLockBtnText = createBtn(
+      `WorldLock: ${this.director.isWorldLocked ? 'ON' : 'OFF'}`,
+      () => {
+        this.director.isWorldLocked = !this.director.isWorldLocked;
+        this.worldLockBtnText.setText(`WorldLock: ${this.director.isWorldLocked ? 'ON' : 'OFF'}`);
+      },
+      0x16a085
+    );
+    this.zoneBtnText = createBtn(
+      `ShowZone: ${this.showInteractionZone ? 'ON' : 'OFF'}`,
+      () => {
+        this.showInteractionZone = !this.showInteractionZone;
+        this.zoneBtnText.setText(`ShowZone: ${this.showInteractionZone ? 'ON' : 'OFF'}`);
+        if (!this.showInteractionZone && !this.showOverlays) {
+          this.overlayGraphics.clear();
+        }
+      },
+      0x2c3e50
+    );
+    createBtn('Overlays', () => {
+      this.showOverlays = !this.showOverlays;
+      if (!this.showOverlays && !this.showInteractionZone) {
+        this.overlayGraphics.clear();
+      }
+    }, 0x34495e);
+
+    // Row 3: Train Cheats
+    nextRow();
     createBtn('HP +20', () => this.trainManager.stats.addHp(20), 0x27ae60);
     createBtn('Fuel +20', () => this.trainManager.stats.addFuel(20), 0xd35400);
     createBtn('Power +3', () => {
-      // Add virtual battery to boost power
       const dummyData = this.itemFactory.getItemData('battery');
       this.trainManager.installItem(dummyData);
     }, 0x8e44ad);
@@ -155,14 +203,13 @@ export class DebugPanel {
       }
     }, 0x16a085);
 
-    // Row 3: Phase Jump
-    btnX = 390;
-    btnY += 34;
+    // Row 4: Phase Jump
+    nextRow();
     const phases = ['Tutorial', 'Bandit', 'Dryland', 'Trade', 'Hazard', 'Final'];
     phases.forEach((pName, idx) => {
       createBtn(pName, () => {
-        const targetTimes = [0, 46, 151, 251, 361, 451];
-        (this.scene as any).currentTime = targetTimes[idx];
+        const targetTimes = [0, 56, 151, 251, 361, 451];
+        (this.scene as any).runTimeSec = targetTimes[idx];
         EventBus.getInstance().emit('PHASE_CHANGE', {
           phaseId: idx,
           name: pName,
@@ -171,41 +218,44 @@ export class DebugPanel {
       }, 0x7f8c8d);
     });
 
-    // Row 4: Spawning Entities
-    btnX = 390;
-    btnY += 34;
+    // Row 5: Spawning Entities
+    nextRow();
     createBtn('+ Bandit', () => (this.enemyManager as any).spawnBandit(), 0xc0392b);
     createBtn('+ Drone', () => (this.enemyManager as any).spawnDrone(), 0xd35400);
-    createBtn('Overlays', () => (this.showOverlays = !this.showOverlays), 0x34495e);
+    createBtn('Clear Enemies', () => {
+      for (const e of this.enemyManager.enemies) {
+        e.destroy();
+      }
+      this.enemyManager.enemies = [];
+    }, 0x95a5a6);
 
-    // Row 5: Spawn Individual Items
-    btnX = 390;
-    btnY += 34;
+    // Row 6: Spawn Individual Items
+    nextRow();
     const itemIds: ItemId[] = [
       'parts', 'fuel', 'gold', 'turret', 'battery', 'flat_car',
       'sheep', 'survivor', 'fridge', 'egg', 'explosive', 'junk'
     ];
     itemIds.forEach((id) => {
       createBtn(`+ ${id}`, () => {
-        const item = this.itemFactory.spawnWorldItem(1800, 520, id, 'near');
+        const item = this.itemFactory.spawnWorldItem(1800, 560, id, 'near');
         this.allWorldItems.push(item);
       }, 0x2c3e50);
     });
 
-    // Row 6: Spawn Opportunity Groups A ~ L
-    btnX = 390;
-    btnY += 34;
+    // Row 7: Spawn Opportunity Groups A ~ L
+    nextRow();
     const oppLetters = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L'];
     oppLetters.forEach((letter) => {
       createBtn(`Group ${letter}`, () => {
         const grp = (this.director as any).groups[letter];
         if (grp) {
+          const runTime = (this.scene as any).runTimeSec || 0;
           this.director.spawnWindowWithItems(
             `debug_${letter}_${Date.now()}`,
             letter,
             grp.name,
             grp.items,
-            this.scene.time.now * 0.001,
+            runTime,
             4.0,
             this.allWorldItems
           );
@@ -214,73 +264,111 @@ export class DebugPanel {
     });
 
     // Force Win / Fail
-    btnX = 390;
-    btnY += 34;
+    nextRow();
     createBtn('Force WIN', () => EventBus.getInstance().emit('RUN_WIN'), 0x27ae60);
     createBtn('Force FAIL', () => EventBus.getInstance().emit('RUN_FAIL', { reason: 'FAIL_HP' }), 0xc0392b);
   }
 
   public update(timeSec: number, phaseId: number, phaseName: string): void {
-    if (!this.isVisible) return;
+    if (!this.isVisible && !this.showInteractionZone && !this.showOverlays) return;
 
-    const stats = this.trainManager.stats;
-    const power = this.trainManager.power;
-    const load = this.trainManager.load;
-    const hookState = this.grapple.getState();
-    const latched = this.grapple.getLatchedItem();
-    const activeWin = this.director.getActiveWindow();
+    if (this.isVisible) {
+      const stats = this.trainManager.stats;
+      const power = this.trainManager.power;
+      const load = this.trainManager.load;
+      const hookState = this.grapple.getState();
+      const latched = this.grapple.getLatchedItem();
+      const activeWin = this.director.getActiveWindow();
+      const winState = activeWin
+        ? (activeWin as any).hasStarted
+          ? 'INTERACTING'
+          : 'APPROACHING'
+        : 'IDLE';
 
-    const info = [
-      `FPS: ${Math.round(this.scene.game.loop.actualFps)}`,
-      `Seed: ${this.seed}`,
-      `Time: ${timeSec.toFixed(1)}s (x${this.timeScale})`,
-      `Phase: ${phaseId} - ${phaseName}`,
-      `Hook State: ${hookState}`,
-      `Hook Target: ${latched ? latched.data.id : 'None'}`,
-      `HP: ${Math.ceil(stats.hp)} / ${stats.maxHp}`,
-      `Fuel: ${Math.ceil(stats.fuel)} / ${stats.maxFuel}`,
-      `Load: ${load.getCurrentLoad()} / ${load.getMaxLoad()} (${(load.getLoadRatio() * 100).toFixed(0)}%)`,
-      `Power: ${power.getSupply()} / ${power.getDemand()} (Eff: ${(power.getEfficiency() * 100).toFixed(0)}%)`,
-      `Cars: ${this.trainManager.getCarCount()} (Flat: ${this.trainManager.getFlatCarCount()})`,
-      `Discarded: ${this.trainManager.getDiscardedCount()}`,
-      `Active Window: ${activeWin ? activeWin.windowId : 'None'}`,
-      `World Items: ${this.allWorldItems.filter((i) => !i.isDestroyed).length}`,
-      `Enemies: ${this.enemyManager.enemies.length}`,
-    ];
+      const info = [
+        `=== REAL-TIME METRICS ===`,
+        `FPS: ${Math.round(this.scene.game.loop.actualFps)}`,
+        `Seed: ${this.seed}`,
+        `RunTime: ${timeSec.toFixed(1)}s (Scale: x${this.timeScale})`,
+        `Phase: [${phaseId}] ${phaseName}`,
+        `Cargo Value: $${this.trainManager.getCargoValue()}`,
+        `Score Potential: ${Math.round(this.calculateScorePotential())}`,
+        ``,
+        `=== TRAIN STATUS ===`,
+        `HP: ${Math.ceil(stats.hp)} / ${stats.maxHp}`,
+        `Fuel: ${Math.ceil(stats.fuel)} / ${stats.maxFuel}`,
+        `Load: ${load.getCurrentLoad()} / ${load.getMaxLoad()} (${(load.getLoadRatio() * 100).toFixed(0)}%)`,
+        `Power: ${power.getSupply()} / ${power.getDemand()} (${(power.getEfficiency() * 100).toFixed(0)}%)`,
+        `Cars: ${this.trainManager.getCarCount()} (Flat: ${this.trainManager.getFlatCarCount()})`,
+        `Discarded Count: ${this.trainManager.getDiscardedCount()}`,
+        ``,
+        `=== GRAPPLE & WINDOWS ===`,
+        `Hook State: ${hookState}`,
+        `Hook Target: ${latched ? latched.data.id : 'None'}`,
+        `Active Window: ${activeWin ? activeWin.windowId : 'None'}`,
+        `Window State: ${winState}`,
+        `World Items: ${this.allWorldItems.filter((i) => !i.isDestroyed).length}`,
+        `Enemies: ${this.enemyManager.enemies.length}`,
+        ``,
+        `=== DIRECTOR CONFIG ===`,
+        `Adaptive Director: ${this.director.isAdaptiveEnabled ? 'ON' : 'OFF'}`,
+        `World Locked: ${this.director.isWorldLocked ? 'ON' : 'OFF'}`,
+      ];
 
-    this.debugStatsText.setText(info.join('\n'));
+      this.debugStatsText.setText(info.join('\n'));
+    }
 
-    // Visual overlays (hitboxes, bands)
-    if (this.showOverlays) {
+    // Visual overlays (hitboxes, bands, interaction zone)
+    if (this.showInteractionZone || this.showOverlays) {
       this.renderOverlays();
     }
+  }
+
+  private calculateScorePotential(): number {
+    return 100 + this.trainManager.getCargoValue() * 1.5;
   }
 
   private renderOverlays(): void {
     const g = this.overlayGraphics;
     g.clear();
 
-    // Depth bands lines
-    g.lineStyle(1, 0x00ffff, 0.4);
-    g.lineBetween(0, 330, 1920, 330);
-    g.lineBetween(0, 420, 1920, 420);
-    g.lineBetween(0, 530, 1920, 530);
-    g.lineBetween(0, 640, 1920, 640);
-    g.lineBetween(0, 710, 1920, 710);
+    // Render Interaction Zone (Section 20: enter ≈ 1150, exit ≈ 290)
+    if (this.showInteractionZone || this.showOverlays) {
+      // Zone boundary lines
+      g.lineStyle(2, 0x2ecc71, 0.85);
+      g.lineBetween(1150, 420, 1150, 750);
 
-    // World items hitboxes
-    g.lineStyle(2, 0xffff00, 0.7);
-    for (const item of this.allWorldItems) {
-      if (!item.isDestroyed) {
-        g.strokeCircle(item.container.x, item.container.y, 34);
-      }
+      g.lineStyle(2, 0xe74c3c, 0.85);
+      g.lineBetween(290, 420, 290, 750);
+
+      // Zone fill
+      g.fillStyle(0x3498db, 0.08);
+      g.fillRect(290, 420, 1150 - 290, 330);
     }
 
-    // Enemies hitboxes
-    g.lineStyle(2, 0xff0000, 0.7);
-    for (const enemy of this.enemyManager.enemies) {
-      if (!enemy.isDead) {
-        g.strokeRect(enemy.container.x - 25, enemy.container.y - 20, 50, 40);
+    if (this.showOverlays) {
+      // Depth bands lines (V2.1: FAR 485-535, MID 535-595, NEAR 595-655, Track 710)
+      g.lineStyle(1, 0x00ffff, 0.35);
+      g.lineBetween(0, 485, 1920, 485);
+      g.lineBetween(0, 535, 1920, 535);
+      g.lineBetween(0, 595, 1920, 595);
+      g.lineBetween(0, 655, 1920, 655);
+      g.lineBetween(0, 710, 1920, 710);
+
+      // World items hitboxes
+      g.lineStyle(2, 0xffff00, 0.7);
+      for (const item of this.allWorldItems) {
+        if (!item.isDestroyed) {
+          g.strokeCircle(item.container.x, item.container.y, 34);
+        }
+      }
+
+      // Enemies hitboxes
+      g.lineStyle(2, 0xff0000, 0.7);
+      for (const enemy of this.enemyManager.enemies) {
+        if (!enemy.isDead) {
+          g.strokeRect(enemy.container.x - 25, enemy.container.y - 20, 50, 40);
+        }
       }
     }
   }

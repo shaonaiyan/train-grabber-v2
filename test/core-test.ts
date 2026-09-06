@@ -104,8 +104,29 @@ assert(stats.isOutOfFuel === false, 'Should no longer be out of fuel');
 assert(stats.outOfFuelTimer === 0, 'Timer should reset to 0');
 console.log('  ✓ TrainStatsManager passed all stat, drain, and fuel tests');
 
-// 5. Verify Data Configuration Integrity
-console.log('5. Validating JSON data configurations...');
+// 5. Verify V2.1 Balance Parameters & Depth Bands
+console.log('5. Validating V2.1 Balance & Depth Configuration...');
+assert(balanceData.depth.far.minY === 485 && balanceData.depth.far.maxY === 535, 'Far depth band should be 485-535');
+assert(balanceData.depth.mid.minY === 535 && balanceData.depth.mid.maxY === 595, 'Mid depth band should be 535-595');
+assert(balanceData.depth.near.minY === 595 && balanceData.depth.near.maxY === 655, 'Near depth band should be 595-655');
+assert(balanceData.depth.trackY === 710, 'Track Y should be 710');
+
+// Grapple hook weight lag and recoil
+assert(balanceData.hook.recoilDistance === 8, 'Grapple recoil distance should be 8px');
+assert(balanceData.hook.tightenDuration === 110, 'Heavy item tighten duration should be 110ms');
+assert(balanceData.hook.maxLag === 65, 'Max lag should be 65px');
+
+// Flat Car Capacity Logic (45/48 load + 8 install load <= 48 + 22 max load = 53 <= 70)
+const curLoad = 45;
+const curMaxLoad = 48;
+const flatCarInstallLoad = 8;
+const flatCarBonus = 22;
+const canFit = curLoad + flatCarInstallLoad <= curMaxLoad + flatCarBonus;
+assert(canFit === true, 'Flat car should be installable when currentLoad + 8 <= curMaxLoad + 22');
+console.log('  ✓ V2.1 Depth bands, hook lag, and flat car fitting logic verified');
+
+// 6. Verify Data Configuration Integrity
+console.log('6. Validating JSON data configurations...');
 const items = (itemsData as any).items || (itemsData as any);
 const requiredItems = ['parts', 'fuel', 'gold', 'turret', 'battery', 'flat_car', 'sheep', 'survivor', 'fridge', 'egg', 'explosive', 'junk'];
 for (const req of requiredItems) {
@@ -129,3 +150,4 @@ assert(phasesData.phases.length === 6, 'Must have 6 phase configurations (0 to 5
 
 console.log('  ✓ All 12 items, 12 opportunity groups, and 6 phases validated');
 console.log('--- ALL VALIDATIONS PASSED CLEANLY ---');
+

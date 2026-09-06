@@ -24,7 +24,7 @@ export class EnemyManager {
   public projectiles: Projectile[] = [];
   private turretWeapons: TurretWeapon[] = [];
 
-  private banditSpawnTimer: number = 10;
+  private banditSpawnTimer: number = 12;
   private droneSpawnTimer: number = 30;
 
   constructor(
@@ -42,19 +42,26 @@ export class EnemyManager {
     this.audio = AudioManager.getInstance();
     this.eventBus = EventBus.getInstance();
 
-    // Listen for explosive barrel discard detonation (Section 47)
     this.eventBus.on('ITEM_DISCARDED_EXPLOSIVE', (data: { x: number; y: number }) => {
       this.handleExplosiveDetonation(data.x, data.y);
+    });
+
+    // Section 32: Tutorial single bandit at 34s
+    this.eventBus.on('SPAWN_TUTORIAL_BANDIT', () => {
+      this.spawnBandit();
     });
   }
 
   public update(time: number, delta: number, currentPhaseId: number, worldSpeed: number): void {
     const dt = delta * 0.001;
     const phaseConfig = phasesData.phases[currentPhaseId];
-    const trainFrontX = 650; // Front of train
+    const trainFrontX = 650;
 
-    // 1. Spawning timers
-    if (phaseConfig) {
+    // Section 79-80: Concurrent enemy cap (Normal max 2, Hazard Zone max 3)
+    const maxCap = currentPhaseId === 4 ? 3 : 2;
+
+    // 1. Spawning timers (only if under cap)
+    if (phaseConfig && this.enemies.length < maxCap) {
       const [bMin, bMax] = phaseConfig.enemyBanditInterval;
       if (bMin < 900) {
         this.banditSpawnTimer -= dt;
@@ -65,7 +72,7 @@ export class EnemyManager {
       }
 
       const [dMin, dMax] = phaseConfig.enemyDroneInterval;
-      if (dMin < 900) {
+      if (dMin < 900 && this.enemies.length < maxCap) {
         this.droneSpawnTimer -= dt;
         if (this.droneSpawnTimer <= 0) {
           this.droneSpawnTimer = this.rng.range(dMin, dMax);
@@ -86,7 +93,7 @@ export class EnemyManager {
     // 3. Update Turrets firing from train
     this.updateTurrets(dt);
 
-    // 4. Update Friendly creatures (Section 46)
+    // 4. Update Friendly creatures
     this.updateFriendlyCreatures(dt);
 
     // 5. Update Projectiles
@@ -98,9 +105,9 @@ export class EnemyManager {
     }
   }
 
-  private spawnBandit(): void {
+  public spawnBandit(): void {
     const startX = 2050;
-    const startY = this.rng.range(630, 680);
+    const startY = this.rng.range(640, 680);
     const bandit = new BanditJeep(this.scene, startX, startY, (dmg) => {
       this.trainManager.stats.takeDamage(dmg, 'bandit');
       this.juice.flashDamage();
@@ -108,9 +115,10 @@ export class EnemyManager {
     this.enemies.push(bandit);
   }
 
-  private spawnDrone(): void {
+  public spawnDrone(): void {
     const startX = 2050;
-    const startY = this.rng.range(380, 480);
+    // Section 10: Drone altitude Y = 390~470
+    const startY = this.rng.range(390, 470);
     const drone = new AttackDrone(this.scene, startX, startY, (dmg) => {
       this.trainManager.stats.takeDamage(dmg, 'drone');
       this.juice.flashDamage();
@@ -122,7 +130,6 @@ export class EnemyManager {
     const modules = this.trainManager.getAllInstalledModules();
     const turrets = modules.filter((m) => m.itemId === 'turret');
 
-    // Ensure we have enough weapon controllers
     while (this.turretWeapons.length < turrets.length) {
       this.turretWeapons.push(new TurretWeapon(this.scene));
     }
@@ -131,15 +138,13 @@ export class EnemyManager {
 
     for (let i = 0; i < turrets.length; i++) {
       const weapon = this.turretWeapons[i];
-      // Find world position of this turret
-      const car = (this.trainManager as any).cars[turrets[i].carIndex];
+      const car = this.trainManager.cars[turrets[i].carIndex];
       if (car) {
         const tx = car.baseCarX;
-        const ty = car.baseCarY - 32;
+        const ty = car.baseCarY - 42;
 
         weapon.update(dt, tx, ty, this.enemies, efficiency, this.projectiles);
 
-        // Aim barrel graphic towards closest enemy
         if (this.enemies.length > 0) {
           const closest = this.enemies[0];
           car.aimTurrets(closest.container.x, closest.container.y);
@@ -166,14 +171,12 @@ export class EnemyManager {
   }
 
   private handleExplosiveDetonation(x: number, y: number): void {
-    // Detonates after 0.6s delay (Section 47)
     this.scene.time.delayedCall(600, () => {
       this.particles.emitExplosion(x, y);
       this.audio.playExplosion();
       this.juice.screenShake(0.012, 300);
 
       const radius = 180;
-      // Damage enemies
       for (const enemy of this.enemies) {
         if (enemy.isDead) continue;
         const dist = Phaser.Math.Distance.Between(x, y, enemy.container.x, enemy.container.y);
@@ -182,7 +185,6 @@ export class EnemyManager {
         }
       }
 
-      // Check if train is within blast radius (Section 47: HP -10)
       const cranePos = this.trainManager.getCranePosition();
       const trainDist = Phaser.Math.Distance.Between(x, y, cranePos.x, cranePos.y);
       if (trainDist <= radius) {

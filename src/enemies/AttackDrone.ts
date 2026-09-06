@@ -1,18 +1,23 @@
 import Phaser from 'phaser';
 import { EventBus } from '../core/EventBus';
 
+export type DroneState = 'APPROACH' | 'ATTACK' | 'RETREAT' | 'EXIT';
+
 export class AttackDrone {
   public scene: Phaser.Scene;
   public container: Phaser.GameObjects.Container;
+  public shadow: Phaser.GameObjects.Graphics;
   public hp: number = 42;
   public maxHp: number = 42;
   public isDead: boolean = false;
-  public priority: number = 2; // Priority 2 > 1 (Drone > Bandit)
+  public priority: number = 2; // Priority 2 > 1 (Turret targets Drone first)
 
-  private attackInterval: number = 1.6;
+  public state: DroneState = 'APPROACH';
+  private attackInterval: number = 1.8; // Section 78
   private attackTimer: number = 0;
+  private shotsFired: number = 0;
+  private maxShots: number = 4; // Section 78
   private damage: number = 4;
-  private speed: number = 160;
   private healthBar: Phaser.GameObjects.Graphics;
   private onAttackTrain: (damage: number) => void;
   private baseY: number;
@@ -21,6 +26,13 @@ export class AttackDrone {
     this.scene = scene;
     this.baseY = startY;
     this.onAttackTrain = onAttack;
+
+    // Ground contact shadow for flying drone (Section 10)
+    this.shadow = scene.add.graphics();
+    this.shadow.fillStyle(0x000000, 0.25);
+    this.shadow.fillEllipse(0, 0, 36, 12);
+    this.shadow.setPosition(startX, 620);
+    this.shadow.setDepth(18);
 
     this.container = scene.add.container(startX, startY);
     this.container.setDepth(23);
@@ -55,7 +67,7 @@ export class AttackDrone {
     g.lineStyle(2, 0xa04000, 1);
     g.strokeCircle(0, 0, 12);
 
-    // Glowing red eye / camera
+    // Glowing red eye
     g.fillStyle(0xff0033, 1);
     g.fillCircle(0, 2, 4.5);
 
@@ -104,23 +116,53 @@ export class AttackDrone {
     // Hover bobbing
     const hover = Math.sin(this.scene.time.now * 0.005) * 12;
     this.container.y = this.baseY + hover;
+    this.shadow.x = this.container.x;
 
-    // Pacing alongside or above train
-    if (this.container.x > trainFrontX + 120) {
-      this.container.x -= (worldSpeed + 25) * dt;
-    } else if (this.container.x < trainFrontX - 220) {
-      this.container.x += 50 * dt;
-    }
+    switch (this.state) {
+      case 'APPROACH':
+        this.container.x -= (worldSpeed + 35) * dt;
+        if (this.container.x - trainFrontX <= 540) {
+          this.state = 'ATTACK';
+          this.attackTimer = 0.5; // Short delay before first laser
+        }
+        break;
 
-    // Attack cycle
-    this.attackTimer += dt;
-    if (this.attackTimer >= this.attackInterval) {
-      this.attackTimer = 0;
-      this.fireLaserAtTrain();
+      case 'ATTACK':
+        if (this.container.x > trainFrontX + 160) {
+          this.container.x -= (worldSpeed + 15) * dt;
+        } else if (this.container.x < trainFrontX) {
+          this.container.x += 40 * dt;
+        }
+
+        this.attackTimer += dt;
+        if (this.attackTimer >= this.attackInterval) {
+          this.attackTimer = 0;
+          this.fireLaserAtTrain();
+        }
+        break;
+
+      case 'RETREAT':
+        // Section 78: Flies up and away
+        this.container.x -= (worldSpeed + 60) * dt;
+        this.baseY -= 45 * dt;
+        if (this.container.x < -160 || this.container.y < 100) {
+          this.state = 'EXIT';
+          this.isDead = true;
+          this.shadow.destroy();
+          this.container.destroy();
+        }
+        break;
     }
   }
 
   private fireLaserAtTrain(): void {
+    if (this.shotsFired >= this.maxShots) {
+      this.state = 'RETREAT';
+      return;
+    }
+
+    this.shotsFired++;
+
     const laser = this.scene.add.graphics();
     laser.lineStyle(2, 0xff0044, 0.9);
     laser.lineBetween(this.container.x, this.container.y + 12, 530, 710);
@@ -128,13 +170,17 @@ export class AttackDrone {
     this.scene.time.delayedCall(90, () => laser.destroy());
 
     this.onAttackTrain(this.damage);
+
+    if (this.shotsFired >= this.maxShots) {
+      this.state = 'RETREAT';
+    }
   }
 
   private die(): void {
     this.isDead = true;
     EventBus.getInstance().emit('ENEMY_KILLED', { type: 'drone' });
+    this.shadow.destroy();
 
-    // Spiral explosion fall
     this.scene.tweens.add({
       targets: this.container,
       y: this.container.y + 120,
