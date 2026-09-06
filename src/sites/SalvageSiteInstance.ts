@@ -3,6 +3,7 @@ import { SalvageSiteDefinition, SiteRecord, ItemId } from '../core/Types';
 import { WorldItem } from '../items/WorldItem';
 import { ItemFactory } from '../items/ItemFactory';
 import { SalvageSiteVisuals } from './SalvageSiteVisuals';
+import { DepthManager } from '../world/DepthManager';
 import { EventBus } from '../core/EventBus';
 import balanceData from '../data/balance.json';
 
@@ -64,12 +65,17 @@ export class SalvageSiteInstance {
       this.props.push(propCont);
     }
 
-    // 2. Spawn Loot attached to Site
+    // 2. Spawn Loot attached to Site within correct DepthBand vertical zone
+    const depthManager = DepthManager.getInstance();
     for (const lootDef of def.loot) {
       const spawnX = this.siteAnchorX + lootDef.offsetX;
+      const bandConfig = depthManager.getBandConfig(lootDef.band);
+      // Center item vertically in its designated roadside depth band
+      const spawnY = (bandConfig.minY + bandConfig.maxY) * 0.5;
+
       const worldItem = itemFactory.spawnWorldItem(
         spawnX,
-        0, // Y will be aligned to depth band
+        spawnY,
         lootDef.item,
         lootDef.band
       );
@@ -134,6 +140,10 @@ export class SalvageSiteInstance {
         } else if (!entry.item.isDestroyed) {
           // Keep loot strictly anchored to Site coordinates
           entry.item.container.x = this.siteAnchorX + entry.offsetX;
+          entry.item.shadow.x = entry.item.container.x;
+          if (entry.item.container.x < -150) {
+            entry.item.destroy();
+          }
         }
       }
     }
@@ -181,11 +191,18 @@ export class SalvageSiteInstance {
 
     this.eventBus.emit('SITE_EXIT', { record: this.record });
 
-    // Clean up props
+    // Clean up props & ungrabbed loot
     for (const prop of this.props) {
       prop.destroy();
     }
     this.props = [];
+
+    for (const entry of this.lootEntries) {
+      if (!entry.isLatchedOrGrabbed && !entry.item.isDestroyed) {
+        entry.item.destroy();
+      }
+    }
+    this.lootEntries = [];
   }
 
   public destroy(): void {
@@ -193,6 +210,13 @@ export class SalvageSiteInstance {
       prop.destroy();
     }
     this.props = [];
+
+    for (const entry of this.lootEntries) {
+      if (!entry.isLatchedOrGrabbed && !entry.item.isDestroyed) {
+        entry.item.destroy();
+      }
+    }
+    this.lootEntries = [];
     this.isFinished = true;
   }
 }
