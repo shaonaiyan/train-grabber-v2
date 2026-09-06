@@ -497,4 +497,114 @@ export class HUD {
     const seconds = Math.floor(timeSec % 60);
     this.timeText.setText(`${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`);
   }
+
+  public setV4Mode(isV4: boolean): void {
+    if (!isV4) return;
+    this.powerText.setVisible(false);
+    this.powerWarningIcon.setVisible(false);
+    this.speedText.setVisible(false);
+    this.havenGoalText.setVisible(false);
+    this.havenProgressBar.setVisible(false);
+    this.cargoOverstackedBadge.setVisible(false);
+    this.cargoText.setVisible(false);
+    this.segmentBadgeText.setVisible(false);
+
+    // Reposition Cargo Value text
+    this.cargoValueText.setPosition(650, 26);
+    this.cargoValueText.setFontSize('18px');
+
+    // Reposition Time text
+    this.timeText.setPosition(860, 26);
+    this.timeText.setFontSize('18px');
+    this.timeText.setColor('#00ffff');
+  }
+
+  public updateV4(timeSec: number, lootValue: number): void {
+    const stats = this.trainManager.stats;
+    const load = this.trainManager.load;
+
+    if (timeSec >= 5.0 && this.tutorialHintText.visible) {
+      this.tutorialHintText.setVisible(false);
+    }
+
+    // 1. HP Bar
+    this.hpBar.clear();
+    const hpPct = Phaser.Math.Clamp(stats.hp / stats.maxHp, 0, 1);
+    this.hpBar.fillStyle(0x2c3e50, 1);
+    this.hpBar.fillRect(95, 22, 100, 14);
+    this.hpBar.fillStyle(hpPct > 0.4 ? 0x2ecc71 : 0xe74c3c, 1);
+    this.hpBar.fillRect(95, 22, 100 * hpPct, 14);
+    this.hpText.setText(`${Math.ceil(stats.hp)} / ${stats.maxHp}`);
+
+    // 2. FUEL Bar
+    this.fuelBar.clear();
+    const fuelPct = Phaser.Math.Clamp(stats.fuel / stats.maxFuel, 0, 1);
+    this.fuelBar.fillStyle(0x2c3e50, 1);
+    this.fuelBar.fillRect(275, 22, 100, 14);
+
+    let fuelColor = 0x3498db;
+    if (stats.fuel < 15) {
+      fuelColor = Math.floor(timeSec * 4) % 2 === 0 ? 0xe74c3c : 0xc0392b;
+    } else if (stats.fuel < 30) {
+      fuelColor = 0xf39c12;
+    }
+    this.fuelBar.fillStyle(fuelColor, 1);
+    this.fuelBar.fillRect(275, 22, 100 * fuelPct, 14);
+    this.fuelText.setText(`${Math.ceil(stats.fuel)} / ${stats.maxFuel}`);
+
+    // Out of fuel alert
+    if (stats.isOutOfFuel) {
+      this.outOfFuelBanner.setVisible(true);
+      const remain = Math.max(0, 12.0 - stats.outOfFuelTimer).toFixed(1);
+      this.outOfFuelText.setText(`OUT OF FUEL! STALLING: ${remain}s`);
+    } else {
+      this.outOfFuelBanner.setVisible(false);
+    }
+
+    // 3. WEIGHT Bar & Badge (Safe 70, Heavy 70-90, Danger 90-105, Critical >105)
+    this.loadBar.clear();
+    const curWeight = load.getCurrentLoad();
+    const safeWeight = 70;
+    const weightPct = Phaser.Math.Clamp(curWeight / 115, 0, 1);
+
+    this.loadBar.fillStyle(0x2c3e50, 1);
+    this.loadBar.fillRect(465, 22, 110, 14);
+
+    let weightColor = 0x27ae60;
+    let badgeColor = 0x27ae60;
+    let badgeLabel = 'SAFE';
+
+    if (curWeight > 105) {
+      const blink = Math.floor(timeSec * 6) % 2 === 0;
+      weightColor = blink ? 0xe74c3c : 0xc0392b;
+      badgeColor = 0xe74c3c;
+      badgeLabel = 'CRITICAL';
+    } else if (curWeight > 90) {
+      weightColor = 0xe67e22;
+      badgeColor = 0xe67e22;
+      badgeLabel = 'DANGER';
+    } else if (curWeight > 70) {
+      weightColor = 0xf39c12;
+      badgeColor = 0xf39c12;
+      badgeLabel = 'HEAVY';
+    }
+
+    this.loadBar.fillStyle(weightColor, 1);
+    this.loadBar.fillRect(465, 22, 110 * weightPct, 14);
+    this.loadText.setText(`${Math.round(curWeight)} / ${safeWeight}`);
+
+    // Badge
+    this.loadBadgeBg.clear();
+    this.loadBadgeBg.fillStyle(badgeColor, 1);
+    this.loadBadgeBg.fillRoundedRect(0, 0, 76, 16, 3);
+    this.loadBadgeText.setText(badgeLabel);
+
+    // 4. LOOT VALUE
+    this.cargoValueText.setText(`LOOT: $${lootValue}`);
+
+    // 5. TIMER: MM:SS / 01:30
+    const m = Math.floor(timeSec / 60);
+    const s = Math.floor(timeSec % 60);
+    this.timeText.setText(`${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')} / 01:30`);
+  }
 }

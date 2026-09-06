@@ -37,4 +37,8 @@ export class Grapple {
   public getLatchedItem(): WorldItem | null {
     return this.controller.getLatchedItem();
   }
+
+  public isHoldingOrReeling(): boolean {
+    return this.controller.isHoldingOrReeling();
+  }
 }

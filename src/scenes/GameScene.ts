@@ -19,6 +19,14 @@ import { DebugPanel } from '../ui/DebugPanel';
 import { TelemetryManager } from '../telemetry/TelemetryManager';
 import balanceData from '../data/balance.json';
 
+// V4 Imports
+import { GameMode, getActiveGameMode } from '../core/Types';
+import { CoreSliceDirector } from '../v4/CoreSliceDirector';
+import { ContinuousSalvageDirector } from '../v4/ContinuousSalvageDirector';
+import { V4InteractionSystem } from '../v4/V4InteractionSystem';
+import { V4Telemetry } from '../v4/V4Telemetry';
+import { V4Audio } from '../v4/V4Audio';
+
 export class GameScene extends Phaser.Scene {
   private seed: number = 0;
   private rng!: SeededRandom;
@@ -42,6 +50,14 @@ export class GameScene extends Phaser.Scene {
   public hud!: HUD;
   public debugPanel!: DebugPanel;
   public telemetry!: TelemetryManager;
+
+  // V4 Specific
+  public isV4: boolean = false;
+  public coreSliceDirector!: CoreSliceDirector;
+  public continuousSalvageDirector!: ContinuousSalvageDirector;
+  public v4InteractionSystem!: V4InteractionSystem;
+  public v4Telemetry!: V4Telemetry;
+  public v4Audio!: V4Audio;
 
   // Run State
   public runTimeSec: number = 0;
@@ -76,6 +92,8 @@ export class GameScene extends Phaser.Scene {
     this.eventBus = EventBus.getInstance();
     this.eventBus.clear();
 
+    this.isV4 = getActiveGameMode() === GameMode.CORE_SLICE_V4;
+
     // FX & Audio
     this.particles = new ParticleManager(this);
     this.juice = new JuiceManager(this);
@@ -109,9 +127,36 @@ export class GameScene extends Phaser.Scene {
       this.seed
     );
 
-    // Telemetry
-    this.telemetry = TelemetryManager.getInstance();
-    this.telemetry.init(this.seed, this.trainManager, this.journeyDirector.progress);
+    // V4 initialization
+    if (this.isV4) {
+      this.v4Audio = V4Audio.getInstance();
+      this.v4Telemetry = V4Telemetry.getInstance();
+      this.v4Telemetry.reset(String(this.seed));
+
+      this.continuousSalvageDirector = new ContinuousSalvageDirector(
+        this,
+        this.rng,
+        this.itemFactory,
+        this.allWorldItems
+      );
+
+      this.coreSliceDirector = new CoreSliceDirector(
+        this,
+        this.rng,
+        this.continuousSalvageDirector,
+        this.itemFactory,
+        this.allWorldItems
+      );
+
+      this.v4InteractionSystem = new V4InteractionSystem(this);
+
+      this.hud.setV4Mode(true);
+      this.debugPanel.setV4Mode(true);
+    } else {
+      // Telemetry V3
+      this.telemetry = TelemetryManager.getInstance();
+      this.telemetry.init(this.seed, this.trainManager, this.journeyDirector.progress);
+    }
 
     this.setupInput();
     this.setupGameEvents();
@@ -126,7 +171,9 @@ export class GameScene extends Phaser.Scene {
       if (pointer.leftButtonDown()) {
         this.grapple.fire(pointer.worldX, pointer.worldY, this.allWorldItems);
       } else if (pointer.rightButtonDown()) {
-        this.grapple.release();
+        if (this.grapple.isHoldingOrReeling()) {
+          this.grapple.release();
+        }
       }
     });
 
@@ -136,7 +183,11 @@ export class GameScene extends Phaser.Scene {
 
     this.input.keyboard?.on('keydown-F2', (evt: KeyboardEvent) => {
       evt.preventDefault();
-      this.telemetry.exportDataToFile();
+      if (this.isV4) {
+        this.v4Telemetry.exportDataToFile();
+      } else {
+        this.telemetry.exportDataToFile();
+      }
     });
   }
 
@@ -165,32 +216,49 @@ export class GameScene extends Phaser.Scene {
     this.eventBus.on('RUN_FAIL', (data: { reason: 'FAIL_HP' | 'FAIL_FUEL' }) => {
       if (this.isGameOver) return;
       this.isGameOver = true;
-      this.telemetry.setRunOutcome(data.reason);
+
+      if (this.isV4) {
+        this.v4Telemetry.result = data.reason === 'FAIL_HP' ? 'FAILED_HP' : 'FAILED_FUEL';
+        this.v4Telemetry.finalWeight = this.trainManager.load.getCurrentLoad();
+        this.v4Telemetry.finalLootValue = this.trainManager.getCargoValue();
+      } else {
+        this.telemetry.setRunOutcome(data.reason);
+      }
 
       this.juice.showFloatingText(960, 500, 'TRAIN CRITICAL FAILURE!', '#e74c3c', '44px');
       this.audio.playWarning();
 
       this.time.delayedCall(1800, () => {
-        this.scene.start('ResultScene', { seed: this.seed, telemetry: this.telemetry });
+        this.scene.start('ResultScene', {
+          mode: this.isV4 ? 'v4' : 'v3',
+          seed: this.seed,
+          telemetry: this.isV4 ? this.v4Telemetry.exportJSON() : this.telemetry,
+        });
       });
     });
 
     this.eventBus.on('RUN_WIN', () => {
-      this.triggerWinSequence();
+      if (this.isV4) {
+        this.coreSliceDirector.triggerCoreSliceComplete();
+      } else {
+        this.triggerWinSequence();
+      }
     });
 
-    // Haven Distance Milestones
+    // Haven Distance Milestones (V3)
     this.eventBus.on('HAVEN_MILESTONE_4300', () => {
-      this.worldScroller.triggerHavenApproachVisuals();
+      if (!this.isV4) this.worldScroller.triggerHavenApproachVisuals();
     });
 
     this.eventBus.on('HAVEN_SIGNAL_4750', () => {
-      this.worldScroller.triggerGreenStationSignal();
-      this.audio.playTrainWhistle();
+      if (!this.isV4) {
+        this.worldScroller.triggerGreenStationSignal();
+        this.audio.playTrainWhistle();
+      }
     });
 
     this.eventBus.on('JOURNEY_ARRIVED_HAVEN', () => {
-      this.triggerWinSequence();
+      if (!this.isV4) this.triggerWinSequence();
     });
   }
 
@@ -217,7 +285,7 @@ export class GameScene extends Phaser.Scene {
 
     this.tweens.add({
       targets: this.cameras.main,
-      zoom: 0.80,
+      zoom: 0.8,
       duration: 1500,
       ease: 'Quad.easeOut',
     });
@@ -236,11 +304,93 @@ export class GameScene extends Phaser.Scene {
     const scaledDelta = delta * timeScale;
     const dt = scaledDelta * 0.001;
 
-    // 1. Update RunTime (Section 210 Step 1)
+    // 1. Update RunTime
     if (!this.isGameOver) {
       this.runTimeSec += dt;
     }
 
+    // ==========================================
+    // V4 CORE SLICE UPDATE PATH
+    // ==========================================
+    if (this.isV4) {
+      // Constant presentation speed 155 px/s, clamped to >= 0.92
+      const baseSpeed = 155;
+      const loadSpeedMul = Math.max(0.92, this.trainManager.load.getSpeedMultiplier());
+      const actualSpeedPx = this.worldScroller.update(
+        scaledDelta,
+        baseSpeed,
+        loadSpeedMul,
+        this.trainManager.stats.isOutOfFuel
+      );
+
+      // Soft weight calculations
+      const currentWeight = this.trainManager.load.getCurrentLoad();
+      let fuelDrainRate = 1.0;
+      if (currentWeight > 105) {
+        // Critical: +25% enemy closing speed, engine strain audio
+        fuelDrainRate = 1.8;
+        this.v4Audio.playTrainStrain();
+      } else if (currentWeight > 90) {
+        fuelDrainRate = 1.4;
+      } else if (currentWeight > 70) {
+        fuelDrainRate = 1.2;
+      }
+
+      if (!this.isGameOver) {
+        this.trainManager.stats.update(dt, fuelDrainRate);
+      }
+
+      // Update Train
+      this.trainManager.update(time, scaledDelta, actualSpeedPx);
+
+      // Update World Items
+      for (let i = this.allWorldItems.length - 1; i >= 0; i--) {
+        const item = this.allWorldItems[i];
+        item.update(dt, actualSpeedPx);
+        if (item.isDestroyed) {
+          this.allWorldItems.splice(i, 1);
+        }
+      }
+
+      // Update Grapple Hook
+      this.grapple.update(scaledDelta, this.allWorldItems);
+
+      // Update Enemies (+25% closing speed if critical weight)
+      const enemyDelta = currentWeight > 105 ? scaledDelta * 1.25 : scaledDelta;
+      this.enemyManager.update(time, enemyDelta, actualSpeedPx);
+
+      // Update V4 Directors & Interactions
+      if (!this.isGameOver) {
+        this.coreSliceDirector.update(dt, this.runTimeSec, actualSpeedPx);
+        this.v4InteractionSystem.update(dt, this.enemyManager.enemies);
+      }
+
+      // Update HUD & Debug
+      this.hud.updateV4(this.runTimeSec, this.trainManager.getCargoValue());
+      this.debugPanel.updateV4(this.runTimeSec);
+
+      // Audio Train Rhythm
+      this.audio.updateTrainRhythm(scaledDelta, actualSpeedPx / baseSpeed);
+
+      // Update V4 Telemetry
+      const hookState = this.grapple.getState();
+      const isHookBusy = hookState !== 'IDLE' && hookState !== 'AIM';
+      if (isHookBusy) {
+        this.v4Telemetry.hookBusyTime += dt;
+      } else {
+        this.v4Telemetry.hookIdleTime += dt;
+      }
+
+      const activeCount =
+        this.allWorldItems.filter((i) => !i.isDestroyed && i.container.x > -50 && i.container.x < 1920).length +
+        this.enemyManager.enemies.length;
+      this.v4Telemetry.update(dt, this.runTimeSec, activeCount);
+      return;
+    }
+
+    // ==========================================
+    // V3 JOURNEY UPDATE PATH
+    // ==========================================
     // 2. Recalculate Train load / speed / fuel (Section 210 Step 2)
     const segmentFuelMul = this.journeyDirector.getFuelMultiplier();
     const fuelDrainRate = this.trainManager.stats.calculateFuelDrain(
@@ -285,7 +435,6 @@ export class GameScene extends Phaser.Scene {
     // 7. Update World Items
     for (let i = this.allWorldItems.length - 1; i >= 0; i--) {
       const item = this.allWorldItems[i];
-      // Items not anchored to an active site scroll normally
       if (!item.siteId) {
         item.update(dt, actualSpeedPx);
       }

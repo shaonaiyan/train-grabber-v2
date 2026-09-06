@@ -6,6 +6,7 @@ export class TrainSlot {
   public relativeY: number;
   public installedModule: InstalledModule | null = null;
   public container: Phaser.GameObjects.Container | null = null;
+  public isStalled: boolean = false;
 
   constructor(type: SlotType, relativeX: number, relativeY: number) {
     this.type = type;

@@ -1,3 +1,18 @@
+export enum GameMode {
+  CORE_SLICE_V4 = 'CORE_SLICE_V4',
+  JOURNEY_V3 = 'JOURNEY_V3',
+}
+
+export function getActiveGameMode(): GameMode {
+  if (typeof window !== 'undefined' && window.location) {
+    const params = new URLSearchParams(window.location.search);
+    const m = params.get('mode');
+    if (m === 'v3') return GameMode.JOURNEY_V3;
+    if (m === 'v4') return GameMode.CORE_SLICE_V4;
+  }
+  return GameMode.CORE_SLICE_V4; // Default V4
+}
+
 export type ItemId =
   | 'parts'
   | 'fuel'
@@ -10,7 +25,16 @@ export type ItemId =
   | 'fridge'
   | 'egg'
   | 'explosive'
-  | 'junk';
+  | 'junk'
+  | 'gold_safe_v4'
+  | 'sheep_v4'
+  | 'fridge_v4'
+  | 'explosive_v4'
+  | 'drone_v4'
+  | 'giant_magnet_v4'
+  | 'bandit_jeep_v4'
+  | 'flat_car_v4'
+  | string;
 
 export type ItemType = 'Consumable' | 'Cargo' | 'Module' | 'Car' | 'Persistent';
 export type SlotType = 'TOP' | 'BODY' | 'SIDE' | 'CRANE';

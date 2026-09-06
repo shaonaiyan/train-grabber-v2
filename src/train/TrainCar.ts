@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { TrainSlot } from './TrainSlot';
 import { SlotType, InstalledModule, CargoItem } from '../core/Types';
+import { ExplosiveBarrelBehavior } from '../v4/behaviors/ExplosiveBarrelBehavior';
+import { V4ObjectRegistry } from '../v4/V4ObjectRegistry';
 
 export type CarType = 'locomotive' | 'crane' | 'cargo' | 'flat';
 
@@ -358,7 +360,29 @@ export class TrainCar {
         if (this.onCargoHoverCallback) {
           this.onCargoHoverCallback(null, 0, 0);
         }
-        this.onCargoDiscardCallback(cargo.instanceId);
+
+        // Section 104-106: Toggle Magnet ON/OFF
+        if (cargo.itemId === 'giant_magnet_v4') {
+          const magnet = V4ObjectRegistry.getInstance().getAll().find(
+            (e) => e.typeId === 'giant_magnet_v4' && e.isDelivered()
+          ) as any;
+          if (magnet && typeof magnet.toggleUserSwitch === 'function') {
+            magnet.toggleUserSwitch();
+            return;
+          }
+        }
+
+        // Section 100-102: Jettison throw for Explosive Barrels
+        if (cargo.itemId === 'explosive_v4' || cargo.itemId === 'explosive') {
+          const worldX = c.x + this.container.x;
+          const worldY = c.y + this.container.y;
+          // Spawn physics explosive barrel throwing towards mouse
+          const barrel = new ExplosiveBarrelBehavior(this.scene, worldX, worldY);
+          barrel.jettisonThrow(pointer.worldX, pointer.worldY);
+          this.onCargoDiscardCallback(cargo.instanceId);
+        } else {
+          this.onCargoDiscardCallback(cargo.instanceId);
+        }
       }
     });
 
@@ -370,24 +394,34 @@ export class TrainCar {
     // Draw specific cargo type
     switch (cargo.itemId) {
       case 'gold':
+      case 'gold_safe_v4':
         this.drawGoldModule(g);
         break;
       case 'sheep':
+      case 'sheep_v4':
         this.drawSheepModule(g, c);
         break;
       case 'survivor':
         this.drawSurvivorModule(g, c);
         break;
       case 'fridge':
+      case 'fridge_v4':
         this.drawFridgeModule(g);
         break;
       case 'egg':
         this.drawEggModule(g, c);
         break;
       case 'explosive':
+      case 'explosive_v4':
         this.drawExplosiveModule(g);
         break;
+      case 'giant_magnet_v4':
+        this.drawMagnetModule(g);
+        break;
       case 'junk':
+        this.drawJunkModule(g);
+        break;
+      default:
         this.drawJunkModule(g);
         break;
     }
@@ -675,6 +709,20 @@ export class TrainCar {
     g.fillCircle(4, -6, 7);
     g.lineStyle(1.5, 0x2c3e50, 1);
     g.strokeRect(-14, -6, 28, 16);
+  }
+
+  private drawMagnetModule(g: Phaser.GameObjects.Graphics): void {
+    g.fillStyle(0x2c3e50, 1);
+    g.fillRoundedRect(-16, -14, 32, 28, 4);
+    g.lineStyle(2, 0x1a252f, 1);
+    g.strokeRoundedRect(-16, -14, 32, 28, 4);
+    g.fillStyle(0x111111, 1);
+    g.fillRect(-8, -6, 16, 20);
+    g.fillStyle(0xd35400, 1);
+    g.fillRect(-14, -10, 5, 18);
+    g.fillRect(9, -10, 5, 18);
+    g.fillStyle(0x00ffff, 1);
+    g.fillCircle(0, -2, 4);
   }
 
   public dipOnInstall(): void {

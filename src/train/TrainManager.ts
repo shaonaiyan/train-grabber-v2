@@ -4,7 +4,7 @@ import { TrainStatsManager } from './TrainStats';
 import { PowerSystem } from './PowerSystem';
 import { LoadSystem } from './LoadSystem';
 import { CargoSystem } from './CargoSystem';
-import { ItemData, ItemId, InstalledModule, CargoItem, SlotType } from '../core/Types';
+import { ItemData, ItemId, InstalledModule, CargoItem, SlotType, GameMode, getActiveGameMode } from '../core/Types';
 import { EventBus } from '../core/EventBus';
 import { ParticleManager } from '../fx/Particles';
 import { AudioManager } from '../fx/AudioManager';
@@ -138,6 +138,14 @@ export class TrainManager {
   public hasSlotFor(item: ItemData): boolean {
     if (item.type === 'Consumable') return true;
 
+    // V4 Mode: Bypass Cargo Capacity limit completely (Sections 15-16)
+    if (getActiveGameMode() === GameMode.CORE_SLICE_V4) {
+      if (item.type === 'Cargo') return true;
+      if (item.type === 'Car') return true;
+      // Module can install or sit on deck
+      return true;
+    }
+
     if (item.type === 'Car') {
       return this.flatCarCount < balanceData.train.maxFlatCars;
     }
@@ -161,6 +169,11 @@ export class TrainManager {
 
   public canFitLoad(item: ItemData): boolean {
     if (item.type === 'Consumable') return true;
+
+    // V4 Mode: Weight is soft, never hard reject (Section 23-24)
+    if (getActiveGameMode() === GameMode.CORE_SLICE_V4) {
+      return true;
+    }
 
     // Section 20: Flat Car special calculation
     if (item.type === 'Car') {
@@ -474,6 +487,107 @@ export class TrainManager {
 
     this.tooltipBg!.setVisible(true);
     this.tooltipText!.setVisible(true);
+  }
+
+  public addFlatCarV4(): boolean {
+    this.flatCarCount++;
+    const newCarIndex = this.cars.length;
+    const newCar = this.addCar('flat', newCarIndex);
+    this.repositionCars();
+    this.load.safeMaxLoad += 20; // Safe weight +20 (Section 158)
+    this.recalculateAllStats();
+
+    newCar.dipOnInstall();
+    this.particles.emitInstallBurst(newCar.baseCarX, newCar.baseCarY);
+    this.updateCameraFraming();
+    return true;
+  }
+
+  public nudgeTowards(targetX: number, targetY: number, amount: number = 6): void {
+    const dx = targetX - this.rootX;
+    const dir = Math.sign(dx) || 1;
+    this.scene.tweens.add({
+      targets: this.cars.map((c) => c.container),
+      x: `+=${dir * amount}`,
+      duration: 120,
+      yoyo: true,
+      ease: 'Quad.easeOut',
+    });
+  }
+
+  public triggerDeckWeightDip(amount: number = 6): void {
+    this.scene.tweens.add({
+      targets: this.cars.map((c) => c.container),
+      y: `+=${amount}`,
+      duration: 140,
+      yoyo: true,
+      ease: 'Bounce.easeOut',
+    });
+  }
+
+  public wobbleDeckCargo(nearX: number, radius: number = 80): void {
+    for (const car of this.cars) {
+      for (const [instanceId, visual] of car.cargoVisuals.entries()) {
+        const worldPos = car.container.x + visual.container.x;
+        if (Math.abs(worldPos - nearX) <= radius) {
+          this.scene.tweens.add({
+            targets: visual.container,
+            angle: { from: -15, to: 15 },
+            duration: 80,
+            yoyo: true,
+            repeat: 3,
+          });
+        }
+      }
+    }
+  }
+
+  public temporarilyDisableTurretNear(x: number, radius: number = 100, durationSec: number = 1.5): boolean {
+    for (const car of this.cars) {
+      for (const slot of car.slots) {
+        if (slot.installedModule && slot.installedModule.itemId === 'turret') {
+          const turretWorldX = car.container.x + (slot.container ? slot.container.x : slot.relativeX);
+          if (Math.abs(turretWorldX - x) <= radius) {
+            slot.isStalled = true;
+            this.scene.time.delayedCall(durationSec * 1000, () => {
+              slot.isStalled = false;
+            });
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
+  public getLeadCarPosition(): { x: number; y: number } {
+    const lead = this.cars[0];
+    return { x: lead ? lead.container.x + 80 : 700, y: lead ? lead.container.y : 710 };
+  }
+
+  public getClosestCarPosition(x: number, y: number): { x: number; y: number } {
+    let closest = this.cars[0];
+    let minDist = 99999;
+    for (const car of this.cars) {
+      const d = Math.abs(car.container.x - x);
+      if (d < minDist) {
+        minDist = d;
+        closest = car;
+      }
+    }
+    return { x: closest ? closest.container.x : 650, y: closest ? closest.container.y : 710 };
+  }
+
+  public getBatteryCount(): number {
+    let count = 0;
+    for (const car of this.cars) {
+      for (const slot of car.slots) {
+        if (slot.installedModule && slot.installedModule.itemId === 'battery') {
+          count++;
+        }
+      }
+    }
+    return count;
   }
 
   public update(time: number, delta: number, worldSpeed: number): void {

@@ -7,6 +7,7 @@ import { ParticleManager } from '../fx/Particles';
 import { JuiceManager } from '../fx/JuiceManager';
 import { AudioManager } from '../fx/AudioManager';
 import { EventBus } from '../core/EventBus';
+import { V4ObjectRegistry, HookableEntity } from '../v4/V4ObjectRegistry';
 import balanceData from '../data/balance.json';
 
 export class GrappleController {
@@ -30,6 +31,7 @@ export class GrappleController {
 
   // Active target
   private latchedItem: WorldItem | null = null;
+  public latchedV4Entity: HookableEntity | null = null;
   private rejectionTimer: number = 0;
   private rejectionReason: string | null = null;
 
@@ -96,12 +98,32 @@ export class GrappleController {
   public releaseCurrentTarget(): void {
     if (this.fsm.isIdle()) return;
 
-    if (this.latchedItem) {
-      this.latchedItem.isLatched = false;
-      this.latchedItem = null;
+    if (this.latchedV4Entity) {
+      const cranePos = this.trainManager.getCranePosition();
+      const angle = Phaser.Math.Angle.Between(cranePos.x, cranePos.y, this.hookX, this.hookY);
+      const throwSpeed = 260;
+      this.latchedV4Entity.onHookRelease({
+        hookX: this.hookX,
+        hookY: this.hookY,
+        hookVx: Math.cos(angle) * throwSpeed,
+        hookVy: Math.sin(angle) * throwSpeed,
+        timeSec: (this.scene as any).currentTime || 0,
+      });
+      this.latchedV4Entity = null;
+      this.clearHoldingUI();
+      this.fsm.setState('RETURN');
+      return;
     }
-    this.clearHoldingUI();
-    this.fsm.setState('RETURN');
+
+    if (this.latchedItem) {
+      this.releaseAndDiscardLatchedItem();
+      this.clearHoldingUI();
+      this.fsm.setState('RETURN');
+    }
+  }
+
+  public isHoldingOrReeling(): boolean {
+    return this.latchedItem !== null || this.latchedV4Entity !== null;
   }
 
   public update(delta: number, availableItems: WorldItem[]): void {
@@ -159,6 +181,17 @@ export class GrappleController {
     this.hookY += this.fireDirY * step;
     this.distanceTraveled += step;
 
+    // Check V4 entities first
+    const v4Targets = V4ObjectRegistry.getInstance().getHookableTargets();
+    for (const v4 of v4Targets) {
+      const pos = v4.getPosition();
+      const dist = Phaser.Math.Distance.Between(this.hookX, this.hookY, pos.x, pos.y);
+      if (dist <= 42) {
+        this.onHitV4Entity(v4);
+        return;
+      }
+    }
+
     for (const item of availableItems) {
       if (item.isLatched || item.isDelivered || item.isDestroyed) continue;
 
@@ -211,7 +244,100 @@ export class GrappleController {
     this.fsm.setState('PULLING');
   }
 
+  private onHitV4Entity(entity: HookableEntity): void {
+    this.latchedV4Entity = entity;
+    const timeSec = (this.scene as any).currentTime || 0;
+    entity.onHookLatch({
+      hookX: this.hookX,
+      hookY: this.hookY,
+      timeSec,
+    });
+
+    const weight = entity.getHookWeight();
+    this.tightenTimer = weight >= 11 ? 0.12 : 0;
+
+    this.fsm.setState('HIT');
+    this.juice.triggerHitStop(balanceData.hook.hitStopDuration);
+    this.juice.screenShake(0.005, 120);
+    this.particles.emitHitSparks(this.hookX, this.hookY, 14);
+    this.audio.playHookHit();
+
+    this.eventBus.emit('GRAPPLE_HIT', { item: entity.typeId });
+    this.fsm.setState('PULLING');
+  }
+
+  private deliverV4Entity(entity: HookableEntity, cranePos: { x: number; y: number }): void {
+    entity.onDeliveredToTrain(this.trainManager);
+
+    // Install as persistent cargo or module
+    if (entity.typeId !== 'flat_car_v4' && entity.typeId !== 'drone_v4') {
+      this.trainManager.installItem({
+        id: entity.typeId as any,
+        name: entity.name,
+        type: entity.hasTag('MODULE') ? 'Module' : 'Cargo',
+        load: entity.getInstalledWeight(),
+        cargoValue: entity.getLootValue(),
+        slot: entity.hasTag('MODULE') ? 'SIDE' : undefined,
+        description: '',
+      });
+    }
+
+    this.eventBus.emit('ITEM_DELIVERED', {
+      item: entity.typeId as any,
+      instanceId: entity.instanceId,
+    });
+
+    this.latchedV4Entity = null;
+    this.fsm.setState('IDLE');
+  }
+
+  public transformLatchedItemIntoTurret(): void {
+    this.latchedV4Entity = null;
+    this.trainManager.installItem({
+      id: 'turret',
+      name: 'Salvaged Machine Gun',
+      type: 'Module',
+      slot: 'TOP',
+      load: 6,
+      damage: 7,
+      baseFireRate: 2.5,
+      range: 650,
+      description: 'Torn directly from Bandit Jeep!',
+    });
+    this.clearHoldingUI();
+    this.fsm.setState('RETURN');
+  }
+
   private updatePulling(dt: number, cranePos: { x: number; y: number }): void {
+    if (this.latchedV4Entity) {
+      const weight = this.latchedV4Entity.getHookWeight();
+      if (this.tightenTimer > 0) {
+        this.tightenTimer -= dt;
+        return;
+      }
+
+      // Base reel speed with heavy object drag
+      const baseReel = balanceData.hook.basePullSpeed;
+      const weightPenalty = Math.min(0.65, (weight / 25) * 0.65);
+      const effectiveReel = baseReel * (1.0 - weightPenalty);
+      const step = effectiveReel * dt;
+
+      const dist = Phaser.Math.Distance.Between(this.hookX, this.hookY, cranePos.x, cranePos.y);
+
+      if (dist <= Math.max(step, 36)) {
+        this.deliverV4Entity(this.latchedV4Entity, cranePos);
+      } else {
+        const angle = Phaser.Math.Angle.Between(this.hookX, this.hookY, cranePos.x, cranePos.y);
+        this.hookX += Math.cos(angle) * step;
+        this.hookY += Math.sin(angle) * step;
+        this.latchedV4Entity.onHookPull(
+          { hookX: this.hookX, hookY: this.hookY, timeSec: (this.scene as any).currentTime || 0 },
+          dt
+        );
+      }
+      return;
+    }
+
     if (!this.latchedItem) {
       this.fsm.setState('RETURN');
       return;

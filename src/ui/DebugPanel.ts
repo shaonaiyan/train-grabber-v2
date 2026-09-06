@@ -9,6 +9,17 @@ import { ItemFactory } from '../items/ItemFactory';
 import { WorldItem } from '../items/WorldItem';
 import { ItemId } from '../core/Types';
 import { EventBus } from '../core/EventBus';
+import { GoldSafeBehavior } from '../v4/behaviors/GoldSafeBehavior';
+import { SheepBehavior } from '../v4/behaviors/SheepBehavior';
+import { FridgeBehavior } from '../v4/behaviors/FridgeBehavior';
+import { ExplosiveBarrelBehavior } from '../v4/behaviors/ExplosiveBarrelBehavior';
+import { DroneBehavior } from '../v4/behaviors/DroneBehavior';
+import { GiantMagnetBehavior } from '../v4/behaviors/GiantMagnetBehavior';
+import { BanditJeepBehavior } from '../v4/behaviors/BanditJeepBehavior';
+import { FlatCarEvent } from '../v4/behaviors/FlatCarEvent';
+import { GremlinBehavior } from '../v4/behaviors/GremlinBehavior';
+import { V4ObjectRegistry } from '../v4/V4ObjectRegistry';
+import { V4Telemetry } from '../v4/V4Telemetry';
 
 export class DebugPanel {
   private scene: Phaser.Scene;
@@ -80,15 +91,21 @@ export class DebugPanel {
     }
   }
 
+  public isV4: boolean = false;
+
+  public setV4Mode(isV4: boolean): void {
+    this.isV4 = isV4;
+  }
+
   private buildPanelUI(): void {
     const bg = this.scene.add.graphics();
     bg.fillStyle(0x0a0e14, 0.95);
-    bg.fillRoundedRect(0, 0, 860, 720, 8);
+    bg.fillRoundedRect(0, 0, 860, 840, 8);
     bg.lineStyle(2, 0x00ffcc, 1);
-    bg.strokeRoundedRect(0, 0, 860, 720, 8);
+    bg.strokeRoundedRect(0, 0, 860, 840, 8);
     this.container.add(bg);
 
-    const title = this.scene.add.text(20, 12, '🛠️ V3 DEBUG SYSTEM PANEL [F1]', {
+    const title = this.scene.add.text(20, 12, '🛠️ DEBUG SYSTEM PANEL [F1]', {
       fontFamily: 'Arial',
       fontSize: '18px',
       fontStyle: 'bold',
@@ -268,6 +285,56 @@ export class DebugPanel {
     nextRow();
     createBtn('Force WIN', () => EventBus.getInstance().emit('RUN_WIN'), 0x27ae60);
     createBtn('Force FAIL', () => EventBus.getInstance().emit('RUN_FAIL', { reason: 'FAIL_HP' }), 0xc0392b);
+
+    // Row 11: V4 Hero Spawns
+    nextRow();
+    createBtn('+ Safe', () => new GoldSafeBehavior(this.scene, 1850, 530), 0xd35400);
+    createBtn('+ Sheep', () => new SheepBehavior(this.scene, 1850, 580), 0x27ae60);
+    createBtn('+ Fridge', () => new FridgeBehavior(this.scene, 1850, 570), 0x2980b9);
+    createBtn('+ Barrel', () => new ExplosiveBarrelBehavior(this.scene, 1850, 580), 0xc0392b);
+
+    nextRow();
+    createBtn('+ Drone', () => new DroneBehavior(this.scene, 1850, 380), 0x8e44ad);
+    createBtn('+ Magnet', () => new GiantMagnetBehavior(this.scene, 1850, 580), 0x16a085);
+    createBtn('+ Jeep', () => new BanditJeepBehavior(this.scene, 1850, 610), 0xe67e22);
+    createBtn('+ FlatCar', () => new FlatCarEvent(this.scene, 1850, 690), 0x34495e);
+
+    // Row 12: V4 Interactions & Presets
+    nextRow();
+    createBtn('+ Gremlin', () => new GremlinBehavior(this.scene, 600, 650), 0xc0392b);
+    createBtn('Panic Sheep', () => {
+      const sheep = V4ObjectRegistry.getInstance().getAll().find((e) => e.typeId === 'sheep_v4') as any;
+      if (sheep && sheep.panic) sheep.panic();
+    }, 0xf39c12);
+    createBtn('Overcharge', () => {
+      const magnet = V4ObjectRegistry.getInstance().getAll().find((e) => e.typeId === 'giant_magnet_v4') as any;
+      if (magnet && magnet.triggerOvercharge) magnet.triggerOvercharge();
+    }, 0xe74c3c);
+    createBtn('W: 60 (Safe)', () => {
+      this.trainManager.load.physicalLoad = 60;
+      this.trainManager.load.effectiveLoad = 60;
+      this.trainManager.recalculateAllStats();
+    }, 0x27ae60);
+
+    nextRow();
+    createBtn('W: 80 (Hvy)', () => {
+      this.trainManager.load.physicalLoad = 80;
+      this.trainManager.load.effectiveLoad = 80;
+      this.trainManager.recalculateAllStats();
+    }, 0xf39c12);
+    createBtn('W: 100 (Dan)', () => {
+      this.trainManager.load.physicalLoad = 100;
+      this.trainManager.load.effectiveLoad = 100;
+      this.trainManager.recalculateAllStats();
+    }, 0xe67e22);
+    createBtn('W: 120 (Crit)', () => {
+      this.trainManager.load.physicalLoad = 120;
+      this.trainManager.load.effectiveLoad = 120;
+      this.trainManager.recalculateAllStats();
+    }, 0xc0392b);
+    createBtn('Export F2', () => {
+      V4Telemetry.getInstance().exportDataToFile();
+    }, 0x2980b9);
   }
 
   private setTestLoadRatio(targetRatio: number): void {
@@ -315,6 +382,53 @@ export class DebugPanel {
         `Active Site: ${activeSite ? activeSite.def.id : 'None'} (x: ${activeSite ? Math.round(activeSite.siteAnchorX) : 0})`,
         `Encounter: ${this.encounterDirector.activeEncounter ? this.encounterDirector.activeEncounter.encounterId : 'None'}`,
         `World Items: ${this.allWorldItems.filter((i) => !i.isDestroyed).length}`,
+        `Enemies: ${this.enemyManager.enemies.length}`,
+      ];
+
+      this.debugStatsText.setText(info.join('\n'));
+    }
+
+    if (this.showSiteBounds || this.showOverlays) {
+      this.renderOverlays();
+    }
+  }
+
+  public updateV4(timeSec: number): void {
+    if (!this.isVisible && !this.showSiteBounds && !this.showOverlays) return;
+
+    if (this.isVisible) {
+      const stats = this.trainManager.stats;
+      const load = this.trainManager.load;
+      const telemetry = V4Telemetry.getInstance();
+      const hookState = this.grapple.getState();
+      const latched = this.grapple.getLatchedItem();
+      const curLoad = load.getCurrentLoad();
+
+      let tier = 'SAFE';
+      if (curLoad > 105) tier = 'CRITICAL';
+      else if (curLoad > 90) tier = 'DANGER';
+      else if (curLoad > 70) tier = 'HEAVY';
+
+      const info = [
+        `=== V4 CORE SLICE METRICS ===`,
+        `FPS: ${Math.round(this.scene.game.loop.actualFps)}`,
+        `Seed: ${this.seed}`,
+        `RunTime: ${timeSec.toFixed(1)}s / 90.0s (Scale: x${this.timeScale})`,
+        `HP: ${Math.ceil(stats.hp)} / ${stats.maxHp} | Fuel: ${Math.ceil(stats.fuel)} / ${stats.maxFuel}`,
+        `Train Weight: ${curLoad.toFixed(0)} / 70 [${tier}]`,
+        `Loot Value: $${this.trainManager.getCargoValue()}`,
+        `Cars: ${this.trainManager.getCarCount()} (Flat: ${this.trainManager.getFlatCarCount()})`,
+        ``,
+        `=== V4 TELEMETRY SUMMARY ===`,
+        `Grab Rate: ${telemetry.getSummary().grabRate}% | Jettisoned: ${telemetry.getSummary().jettisonCount}`,
+        `Coverage: ${telemetry.getSummary().targetCoveragePercent}% | Max Idle Gap: ${telemetry.getSummary().maxIdleGap.toFixed(2)}s`,
+        `Regret Triggers: ${telemetry.getSummary().regretResponses}`,
+        `Cross-Interactions: ${telemetry.getSummary().crossInteractions}`,
+        `Threats: Turret ${telemetry.getSummary().turretEnemyResolutions} | Grapple/Impact ${telemetry.getSummary().grappleEnemyResolutions}`,
+        ``,
+        `=== LIVE OBJECTS ===`,
+        `Hook State: [${hookState}] Target: ${latched ? latched.data.id : 'None'}`,
+        `Loose Entities: ${V4ObjectRegistry.getInstance().getAll().filter((e) => !e.isDestroyed()).length}`,
         `Enemies: ${this.enemyManager.enemies.length}`,
       ];
 
